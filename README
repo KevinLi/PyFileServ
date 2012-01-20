@@ -1,0 +1,26 @@
+Puush Server
+A Puush Server. In Python.
+
+This script allows you to save files captured with puush to your own server.
+
+Requirements
+	- Python
+		- Versions tested:
+			- Python 2.6.6
+			- Python 2.7.2
+	- Puush Desktop Client
+		- Versions tested:
+			- r82
+			- r83
+		- OS's tested:
+			- Windows 7 x64 Ultimate SP1
+
+Configuration
+	- Change variable values for lines 32-41 if needed.
+	- Set ENABLE_REGISTRATION to True when creating an account.
+	- An account is needed to upload. Register at http://host:port/register
+	- Create the upload directory and make it writeable.
+	- Add to %appdata%\puush\puush.ini if Windows:
+		- ProxyServer = ip
+		- ProxyPort = port
+	- Start server with "python PuushServer.py" in screen or something similar.
