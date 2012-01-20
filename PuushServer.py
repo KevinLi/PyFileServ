@@ -171,8 +171,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
                 "CONTENT_TYPE":self.headers["Content-Type"]})
-            database.execute("INSERT INTO users (email, passwordHash, apikey) "\
-                "VALUES (:email, :pass, :apikey)", {
+            database.execute(
+                "INSERT INTO users (email, passwordHash, apikey, usage) "\
+                "VALUES (:email, :pass, :apikey, 0)", {
                     "email":form["email"].value,
                     "pass":self.hash_pass(form["pass"].value),
                     "apikey":self.gen_api_key()})
