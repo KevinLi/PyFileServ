@@ -3,17 +3,13 @@
 
 Known bugs: 
     Crashes on cancellation of upload
-    Looks like it receives a cancellation confirmation or something
 Todo: 
-    User upload history
-    Gzip send text?
+    Gzip send text? Plain text seems fine though.
     POST /api/thumb (returns image)
-    POST /api/oshi This looks like error reporting; server returns 200 with
-        content bytes (originally gzip'd (like everything else))
-            1f 8b 08 00 00 00 00 00 00 03 03 00 00 00 00 00 00 00 00 00
     POST /api/del Gives key(k), image(i), and z==poop
         returns text/html, with 10 recent files
-    POST /api/hist Only sends key, is requested quite a bit.
+        (implement history first)
+    POST /api/hist Only sends key. this url is requested quite a lot.
         returns 200, text/html (gzip'd)
             0.1967558,2012-01-07 15:21:49,http://puu.sh/eFgH,origfilenane.jpg,9,
             1.1599857,2012-01-09 10:25:39,http://puu.sh/ABcD,origfilename.png,3,
@@ -104,7 +100,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data = open(UPLOAD_DIR + filename, "rb").read()
                 self.send_response_header(200, {
                     "Content-Type":self.data[3],
-                    "Content-Disposition":"inline; filename=\"{0}\"".format(
+                    "Content-Disposition":'inline; filename="{0}"'.format(
                         self.data[4])})
                 self.wfile.write(data)
             # Nonexistent file
@@ -144,8 +140,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("404")
     
     def do_POST(self):
-        self.send_response_header(200, {"Content-Type":"text/plain"})
         if self.path == "http://puush.me/api/auth":
+            self.send_response_header(200, {"Content-Type":"text/plain"})
             userinfo = {"email":"", "password":"", "key":"", "usage":""}
             authstring = self.rfile.read(
                 int(self.headers.getheader("Content-Length"))).split("&")
@@ -172,19 +168,31 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "http://puush.me/api/up":
             try:
                 return_url, file_usage = self.handle_upload()
+                self.send_response_header(200, {"Content-Type":"text/plain"})
                 self.wfile.write("0,{0},0,{1}".format(return_url, file_usage))
             except BaseException:
                 pass
+        # Error reporting by client program
+        elif self.path == "http://puush.me/api/oshi":
+            # Don't care what the data is; I'm not the developer. ;)
+            self.send_response_header(200, {"Content-Type":"text/html"})
+            # No idea what this is, just that the server returned this
+            self.wfile.write(
+                "\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03"\
+                "\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00")
         elif self.path == "http://puush.me/api/hist":
+            self.send_response_header(200, {"Content-Type":"text/plain"})
             self.wfile.write("0\n") # Maybe later
         # Submission of registration form
         elif self.path == "/register":
+            self.send_response_header(200, {"Content-Type":"text/plain"})
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
-                "CONTENT_TYPE":self.headers["Content-Type"]})
-            if re.search(".+@.+\..+", form["email"].value) and \
-              len(form["pass"]) >= 5 and \
-              form["pass"].value == form["passc"].value:
+                    "CONTENT_TYPE":self.headers["Content-Type"]})
+            if ( re.search(".+@.+\..+", form["email"].value)
+                 and len(form["pass"]) >= 5
+                 and form["pass"].value == form["passc"].value
+               ):
                 database.execute(
                     "INSERT INTO users (email, passwordHash, apikey, usage) "\
                     "VALUES (:email, :pass, :apikey, 0)", {
@@ -219,8 +227,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             new_file.write(form_data_file)
             new_file.close()
             database.execute(
-                "UPDATE users SET usage=usage+:file_len WHERE apikey=:apikey;", {
-                    "file_len":len(form_data_file),
+                "UPDATE users SET usage=usage+:file_len WHERE apikey=:apikey;",
+                    {"file_len":len(form_data_file),
                     "apikey":form_data_key})
             db_connection.commit()
             database.execute(
