@@ -16,14 +16,9 @@ Requirements
 			- Windows 7 x64 Ultimate SP1
 
 Configuration
-	- Change values for lines 38-43 if needed.
-		HOST_IP: The IP of the box this script will run on
-		PORT: The port the client should connect to
-		PASSWORD_SALT: Type something random here.
-		DATABASE_NAME: Name of database. Leave it alone if you want.
-		VIEW_PASSWORD: Password to use at /viewfiles
-		ENABLE_REGISTRATION: Set to True when creating an account.
+	- Run script to generate config file
 	- An account is needed to upload. Register at http://host:port/register
+	- Remember to set registration to False after account creation.
 	- Create the upload directory and make it writeable.
 	- Add to %appdata%\puush\puush.ini if Windows:
 		- ProxyServer = HOST_IP
@@ -32,5 +27,5 @@ Configuration
 
 Browser-accessible URLs:
 	- /register for registering users
-	- /viewfiles for viewing all uploaded files
+	- /viewfiles to veiw all uploaded files
 	- /XXXX where Xs are alphanumerical characters

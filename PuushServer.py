@@ -34,18 +34,8 @@ import string
 import mimetypes
 # File retrieval
 import re
-
-HOST_IP = ""
-PORT = 3200
-PASSWORD_SALT = "type_something_random_here"
-DATABASE_NAME = "puushdata.sqlite"
-VIEW_PASSWORD = "hunter2"
-ENABLE_REGISTRATION = True
-
-UPLOAD_DIR = "./Uploads/"
-UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
-
-PROGRAM_VERSION = "83"
+# Configuration
+import ConfigParser
 
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def hash_pass(self, password):
@@ -292,10 +282,40 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return UPLOAD_URL + new_filename, len(form_data_file)
 
 if __name__ == "__main__":
+    CONFIG_FILE = "server.cfg"
+    config = ConfigParser.RawConfigParser()
+    if CONFIG_FILE not in os.listdir("."):
+        if raw_input("No config file present. Make one now? [y/n]: ") == "y":
+
+            config.add_section("Server")
+            config.set("Server", "IP", raw_input("IP: "))
+            config.set("Server", "Port", input("Port: "))
+            config.set("Server", "PasswordSalt", raw_input("Password Salt: "))
+            config.set("Server", "DatabaseName",
+                raw_input("Database Name (Ex: puushdata.sqlite): "))
+            config.set("Server", "ViewfilesPassword",
+                raw_input("Password to access host:port/viewfiles: "))
+            config.set("Server", "EnableRegistration", "True")
+            config.set("Server", "UploadDir","./Uploads/")
+            config.set("Server", "ProgVer","83")
+            with open(CONFIG_FILE, "wb") as configfile:
+                config.write(configfile)
+        else:
+            exit()
+    config.read(CONFIG_FILE)
+    HOST_IP = config.get("Server", "IP")
+    PORT = int(config.get("Server", "Port"))
+    PASSWORD_SALT = config.get("Server", "PasswordSalt")
+    DATABASE_NAME = config.get("Server", "DatabaseName")
+    VIEW_PASSWORD = config.get("Server", "ViewfilesPassword")
+    ENABLE_REGISTRATION = config.get("Server", "EnableRegistration")
+    UPLOAD_DIR = config.get("Server", "UploadDir")
+    PROGRAM_VERSION = config.get("Server", "ProgVer")
+    UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
     if DATABASE_NAME not in os.listdir("."):
         db_connection = sqlite3.connect(DATABASE_NAME)
         database = db_connection.cursor()
-        print("Creating database...")
+        print("Generating database...")
         # User ID, email, password hash, api key, usage (in bytes)
         database.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, "\
                          "email TEXT, passwordHash TEXT, apikey TEXT, "\
