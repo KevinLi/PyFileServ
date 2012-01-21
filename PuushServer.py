@@ -8,6 +8,7 @@ Todo:
     During registration, require email address to be in the correct format
     Set minimum password length during registration
     A confirm password field
+    User upload history
 
 """
 
@@ -29,10 +30,10 @@ import mimetypes
 # File retrieval
 import re
 
-HOST_IP = ""
+HOST_IP = "199.19.116.75"
 PORT = 3200
-PASSWORD_SALT = "type something random here"
-DATABASE_NAME = "puushdata.sqlite"
+PASSWORD_SALT = "test_server_please_ignore"
+DATABASE_NAME = "puushdatabase.sqlite"
 
 UPLOAD_DIR = "./Uploads/"
 UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
@@ -115,7 +116,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     '<form action="/register" method="post">'\
                     'Email:<br /><input type="text" name="email" /><br />'\
                     'Password:<br /><input type="text" name="pass" /><br />'\
-                    '<input type="submit" value="Register" />'\
+                    'Confirm Password:<br /><input type="text" name="passc" />'\
+                    '<br /><input type="submit" value="Register" />'\
                     '</form>')
             else:
                 self.wfile.write("Registration is disabled.")
@@ -171,15 +173,24 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
                 "CONTENT_TYPE":self.headers["Content-Type"]})
-            database.execute(
-                "INSERT INTO users (email, passwordHash, apikey, usage) "\
-                "VALUES (:email, :pass, :apikey, 0)", {
-                    "email":form["email"].value,
-                    "pass":self.hash_pass(form["pass"].value),
-                    "apikey":self.gen_api_key()})
-            db_connection.commit()
-            self.wfile.write(
-                "Registered!\nYou may now log in with your email and password.")
+            if re.search(".+@.+\..+", form["email"].value) and \
+              len(form["pass"]) >= 5 and \
+              form["pass"].value == form["passc"].value:
+                database.execute(
+                    "INSERT INTO users (email, passwordHash, apikey, usage) "\
+                    "VALUES (:email, :pass, :apikey, 0)", {
+                        "email":form["email"].value,
+                        "pass":self.hash_pass(form["pass"].value),
+                        "apikey":self.gen_api_key()})
+                db_connection.commit()
+                self.wfile.write(
+                    "Registered!"\
+                    "You may now log in with your email and password.")
+            else:
+                self.wfile.write(
+                    "Please make sure your email address is in the correct "\
+                    "format and that your password is more than 5 characters")
+
     
     def handle_upload(self):
         """Receives data, authenticates, writes file to disk and database"""
