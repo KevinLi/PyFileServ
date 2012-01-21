@@ -201,7 +201,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     environ={"REQUEST_METHOD":"POST",
                         "CONTENT_TYPE":self.headers["Content-Type"]})
                 if ( re.search(".+@.+\..+", form["email"].value)
-                     and len(form["pass"]) >= 5
+                     and len(form["pass"].value) >= 5
                      and form["pass"].value == form["passc"].value
                    ):
                     database.execute(
