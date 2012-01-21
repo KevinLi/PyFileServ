@@ -35,10 +35,10 @@ import mimetypes
 # File retrieval
 import re
 
-HOST_IP = "199.19.116.75"
+HOST_IP = ""
 PORT = 3200
-PASSWORD_SALT = "test_server_please_ignore"
-DATABASE_NAME = "puushdatabase.sqlite"
+PASSWORD_SALT = "type_something_random_here"
+DATABASE_NAME = "puushdata.sqlite"
 
 UPLOAD_DIR = "./Uploads/"
 UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
