@@ -16,11 +16,21 @@ Requirements
 			- Windows 7 x64 Ultimate SP1
 
 Configuration
-	- Change variable values for lines 32-41 if needed.
-	- Set ENABLE_REGISTRATION to True when creating an account.
+	- Change values for lines 38-43 if needed.
+		HOST_IP: The IP of the box this script will run on
+		PORT: The port the client should connect to
+		PASSWORD_SALT: Type something random here.
+		DATABASE_NAME: Name of database. Leave it alone if you want.
+		VIEW_PASSWORD: Password to use at /viewfiles
+		ENABLE_REGISTRATION: Set to True when creating an account.
 	- An account is needed to upload. Register at http://host:port/register
 	- Create the upload directory and make it writeable.
 	- Add to %appdata%\puush\puush.ini if Windows:
-		- ProxyServer = ip
-		- ProxyPort = port
+		- ProxyServer = HOST_IP
+		- ProxyPort = PORT
 	- Start server with "python PuushServer.py" in screen or something similar.
+
+Browser-accessible URLs:
+	- /register for registering users
+	- /viewfiles for viewing all uploaded files
+	- /XXXX where Xs are alphanumerical characters

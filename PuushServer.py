@@ -39,12 +39,13 @@ HOST_IP = ""
 PORT = 3200
 PASSWORD_SALT = "type_something_random_here"
 DATABASE_NAME = "puushdata.sqlite"
+VIEW_PASSWORD = "hunter2"
+ENABLE_REGISTRATION = True
 
 UPLOAD_DIR = "./Uploads/"
 UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
 
 PROGRAM_VERSION = "83"
-ENABLE_REGISTRATION = True
 
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def hash_pass(self, password):
@@ -78,7 +79,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return type
 
     def select_from_db(self, table, item, value):
-        """Gets user data from database"""
+        """Gets data from database"""
         database.execute("SELECT * FROM {0} WHERE {1} = :{1};".format(
             table, item), {item:value})
         self.data = database.fetchone()
@@ -120,8 +121,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.wfile.write(
                     '<form action="/register" method="post">'\
                     'Email:<br /><input type="text" name="email" /><br />'\
-                    'Password:<br /><input type="text" name="pass" /><br />'\
-                    'Confirm Password:<br /><input type="text" name="passc" />'\
+                    'Password:<br /><input type="password" name="pass" /><br />'\
+                    'Confirm Password:<br /><input type="password" name="passc" />'\
                     '<br /><input type="submit" value="Register" />'\
                     '</form>')
             else:
@@ -135,6 +136,16 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/":
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.wfile.write("hi")
+        elif self.path == "/viewfiles":
+            self.send_response_header(200, {"Content-Type":"text/html"})
+            self.wfile.write(
+                    '<!doctype html><html><head>'\
+                    '<meta charset=utf-8 /><title>Authentication'\
+                    '</title></head><body>'\
+                    '<form action="/viewfiles" method="post">'\
+                    'Password:<br /><input type="password" name="pass" /><br />'\
+                    '<br /><input type="submit" value="&quot;Login&quot;" />'\
+                    '</form>')
         else:
             self.send_response_header(404, {"Content-Type":"text/plain"})
             self.wfile.write("404")
@@ -185,29 +196,68 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("0\n") # Maybe later
         # Submission of registration form
         elif self.path == "/register":
-            self.send_response_header(200, {"Content-Type":"text/plain"})
+            try:
+                form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+                    environ={"REQUEST_METHOD":"POST",
+                        "CONTENT_TYPE":self.headers["Content-Type"]})
+                if ( re.search(".+@.+\..+", form["email"].value)
+                     and len(form["pass"]) >= 5
+                     and form["pass"].value == form["passc"].value
+                   ):
+                    database.execute(
+                        "INSERT INTO users (email, passwordHash, apikey, usage) "\
+                        "VALUES (:email, :pass, :apikey, 0)", {
+                            "email":form["email"].value,
+                            "pass":self.hash_pass(form["pass"].value),
+                            "apikey":self.gen_api_key()})
+                    db_connection.commit()
+                    self.send_response_header(200, {"Content-Type":"text/plain"})
+                    self.wfile.write(
+                        "Registered!"\
+                        "You may now log in with your email and password.")
+                else:
+                    self.send_response_header(200, {"Content-Type":"text/plain"})
+                    self.wfile.write(
+                        "Please make sure that your email address is in the correct "\
+                        "format and that your password is more than 5 characters")
+            except KeyError:
+                self.send_response_header(400, {"Content-Type":"text/html"})
+                self.wfile.write("At least put <i>something</i> in there.")
+        elif self.path == "/viewfiles":
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
                     "CONTENT_TYPE":self.headers["Content-Type"]})
-            if ( re.search(".+@.+\..+", form["email"].value)
-                 and len(form["pass"]) >= 5
-                 and form["pass"].value == form["passc"].value
-               ):
-                database.execute(
-                    "INSERT INTO users (email, passwordHash, apikey, usage) "\
-                    "VALUES (:email, :pass, :apikey, 0)", {
-                        "email":form["email"].value,
-                        "pass":self.hash_pass(form["pass"].value),
-                        "apikey":self.gen_api_key()})
-                db_connection.commit()
-                self.wfile.write(
-                    "Registered!"\
-                    "You may now log in with your email and password.")
-            else:
-                self.wfile.write(
-                    "Please make sure your email address is in the correct "\
-                    "format and that your password is more than 5 characters")
-
+            try:
+                if form["pass"].value == VIEW_PASSWORD:
+                    self.send_response_header(200, {"Content-Type":"text/html"})
+                    database.execute("SELECT * FROM files;")
+                    self.wfile.write(
+                        '<!doctype html><html><head>'\
+                        '<meta charset=utf-8 /><title>Files</title>'\
+                        '<style type="text/css">'\
+                        'a {text-decoration: none; color: blue;}'\
+                        'table {margin-left: 20px; margin-top: 30px;}'\
+                        'th, td { font: 90% monospace; text-align: left;}'\
+                        'th { font-weight: bold; padding-right: 14px; padding-bottom: 3px;}'\
+                        'td {padding-right: 14px;}'\
+                        'td.s, th.s {text-align: right;}'\
+                        '</style></head><body>'\
+                        '<table summary="Directory Listing" cellpadding="0" cellspacing="0">'\
+                        '<thead><tr><th class="n">Name</th><th class="m">Owner</th>'\
+                        '<th class="t">Type</th></tr></thead><tbody>')
+                    for item in database:
+                        self.wfile.write(
+                            '<tr><td class="n"><a href="{0}">{1}</a></td>'\
+                            '<td class="m">{2}</td><td class="t">{3}</td></tr>'.format(
+                                item[2],item[4],item[1],item[3]))
+                    self.wfile.write("</tbody></table></body></html>")
+                else:
+                    self.send_response_header(401, {})
+                    self.wfile.write("nope")
+            # Blank entry
+            except KeyError:
+                self.send_response_header(400, {})
+                self.wfile.write("nope")
     
     def handle_upload(self):
         """Receives data, authenticates, writes file to disk and database"""
