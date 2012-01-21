@@ -6,7 +6,19 @@ Known bugs:
     Looks like it receives a cancellation confirmation or something
 Todo: 
     User upload history
-
+    Gzip send text?
+    POST /api/thumb (returns image)
+    POST /api/oshi This looks like error reporting; server returns 200 with
+        content bytes (originally gzip'd (like everything else))
+            1f 8b 08 00 00 00 00 00 00 03 03 00 00 00 00 00 00 00 00 00
+    POST /api/del Gives key(k), image(i), and z==poop
+        returns text/html, with 10 recent files
+    POST /api/hist Only sends key, is requested quite a bit.
+        returns 200, text/html (gzip'd)
+            0.1967558,2012-01-07 15:21:49,http://puu.sh/eFgH,origfilenane.jpg,9,
+            1.1599857,2012-01-09 10:25:39,http://puu.sh/ABcD,origfilename.png,3,
+            no \r or \n present
+            after last entry, ends with hex '31 0a'
 """
 
 # HTTP Server
