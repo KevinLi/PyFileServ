@@ -5,9 +5,6 @@ Known bugs:
     Crashes on cancellation of upload
     Looks like it receives a cancellation confirmation or something
 Todo: 
-    During registration, require email address to be in the correct format
-    Set minimum password length during registration
-    A confirm password field
     User upload history
 
 """
