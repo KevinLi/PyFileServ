@@ -260,9 +260,7 @@ if __name__ == "__main__":
         db_connection = sqlite3.connect(DATABASE_NAME)
         database = db_connection.cursor()
     Server = BaseHTTPServer.HTTPServer((HOST_IP, PORT), RequestHandler)
-    print("Puush Server Started - {0}:{1}".format(
-        HOST_IP if HOST_IP != "" else "127.0.0.1",
-        PORT))
+    print("Puush Server Started - {0}:{1}".format(HOST_IP, PORT))
     try:
         Server.serve_forever()
     except KeyboardInterrupt:
