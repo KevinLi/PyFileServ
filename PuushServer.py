@@ -361,7 +361,7 @@ if __name__ == "__main__":
     ENABLE_REGISTRATION = bool(config.get("Server", "EnableRegistration"))
     UPLOAD_DIR = config.get("Server", "UploadDir")
     PROGRAM_VERSION = config.get("Server", "ProgVer")
-    UPLOAD_URL = "http://" + HOST_IP + ":" + PORT + "/"
+    UPLOAD_URL = "http://" + HOST_IP + ":" + str(PORT) + "/"
     
     if DATABASE_NAME not in os.listdir("."):
         db_connection = sqlite3.connect(DATABASE_NAME)
