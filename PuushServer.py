@@ -382,7 +382,7 @@ if __name__ == "__main__":
         database = db_connection.cursor()
     
     Server = BaseHTTPServer.HTTPServer((HOST_IP, PORT), RequestHandler)
-    print("Puush Server Started - " + HOST_IP + ":" + PORT)
+    print("Puush Server Started - " + HOST_IP + ":" + str(PORT))
     try:
         Server.serve_forever()
     except KeyboardInterrupt:
