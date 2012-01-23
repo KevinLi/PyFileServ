@@ -312,7 +312,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 "url":new_filename})
             return UPLOAD_URL + new_filename, data[0], len(form_data_file)
     def handle_history(self, apikey):
-        print(apikey)
         self.select_from_db("users", "apikey", apikey)
         database.execute("SELECT * FROM files WHERE owner=:owner;",{
             "owner":self.data[1]})
@@ -332,7 +331,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         upload_list[0] = string.replace(upload_list[0],"1","0",1)
         upload_list.append("1\n")
         self.wfile.write("".join(upload_list))
-        print("sent history to client")
 if __name__ == "__main__":
     os.chdir(".")
     CONFIG_FILE = "server.cfg"
