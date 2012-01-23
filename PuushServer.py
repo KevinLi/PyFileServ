@@ -6,22 +6,14 @@ Known bugs:
 Todo: 
     Gzip send text? Plain text seems fine though.
     POST /api/thumb (returns image)
-    POST /api/del Gives key(k), image(i), and z==poop
-        returns text/html, with 10 recent files
-        (implement history first)
-    POST /api/hist Only sends key. this url is requested quite a lot.
-        returns 200, text/html (gzip'd)
-            0.1967558,2012-01-07 15:21:49,http://puu.sh/eFgH,origfilenane.jpg,9,
-            1.1599857,2012-01-09 10:25:39,http://puu.sh/ABcD,origfilename.png,3,
-            no \r or \n present
-            after last entry, ends with hex '31 0a'
+    Optimisation? a+b is much faster than "{0}{1}".format(a,b)
 """
 
 # HTTP Server
 import BaseHTTPServer
 # Database
 import sqlite3
-# Hashing functions
+# Hashing functions and timestamps
 import hashlib
 import random
 import time
@@ -61,8 +53,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             return filename
             
-    def detect_mimetype(self, text):
-        type = mimetypes.guess_type(text, strict=True)[0]
+    def detect_mimetype(self, filename):
+        type = mimetypes.guess_type(filename, strict=True)[0]
         if type == None:
             return "text/plain"
         else:
@@ -94,6 +86,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "Content-Disposition":'inline; filename="{0}"'.format(
                         self.data[4])})
                 self.wfile.write(data)
+                database.execute(
+                    "UPDATE files SET views=views+1 WHERE url=:url",{
+                        "url":filename})
+                db_connection.commit()
             # Nonexistent file
             except IOError:
                 self.send_response_header(404, {"Content-Type":"text/plain"})
@@ -118,10 +114,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 self.wfile.write("Registration is disabled.")
             self.wfile.write("</body></html>")
-        # Easter egg!
-        elif self.path == "/418":
-            self.send_response_header(418, {"Content-Type":"text/plain"})
-            self.wfile.write("418 I'm a teapot")
+
         # Because main page
         elif self.path == "/":
             self.send_response_header(200, {"Content-Type":"text/html"})
@@ -136,12 +129,22 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     'Password:<br /><input type="password" name="pass" /><br />'\
                     '<br /><input type="submit" value="&quot;Login&quot;" />'\
                     '</form>')
+        # Easter egg!
+        elif self.path == "/418":
+            self.send_response_header(418, {"Content-Type":"text/plain"})
+            self.wfile.write("418 I'm a teapot")
         else:
             self.send_response_header(404, {"Content-Type":"text/plain"})
             self.wfile.write("404")
     
     def do_POST(self):
-        if self.path == "http://puush.me/api/auth":
+        if self.path == "http://puush.me/api/hist":
+            self.send_response_header(200, {"Content-Type":"text/html"})
+            form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+                environ={"REQUEST_METHOD":"POST",
+                    "CONTENT_TYPE":self.headers["Content-Type"]})
+            self.handle_history(form["k"].value)
+        elif self.path == "http://puush.me/api/auth":
             self.send_response_header(200, {"Content-Type":"text/plain"})
             userinfo = {"email":"", "password":"", "key":"", "usage":""}
             authstring = self.rfile.read(
@@ -168,22 +171,41 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             del userinfo
         elif self.path == "http://puush.me/api/up":
             try:
-                return_url, file_usage = self.handle_upload()
+                return_url, image_num, file_usage = self.handle_upload()
                 self.send_response_header(200, {"Content-Type":"text/plain"})
-                self.wfile.write("0,{0},0,{1}".format(return_url, file_usage))
+                self.wfile.write("0,{0},{1},{2}".format(
+                    return_url, image_num, file_usage))
             except BaseException:
                 pass
+        elif self.path == "http://puush.me/api/del":
+            form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+                environ={"REQUEST_METHOD":"POST",
+                    "CONTENT_TYPE":self.headers["Content-Type"]})
+            try:
+                self.select_from_db("users", "apikey", form["k"].value)
+                self.select_from_db("files","id",form["i"].value)
+                os.remove(UPLOAD_DIR+self.data[2])
+                database.execute("DELETE FROM files WHERE id=:id",{
+                    "id":form["i"].value})
+                db_connection.commit()
+                self.send_response_header(200, {"Content-Type":"text/html"})
+                self.handle_history(form["k"].value)
+
+            except BaseException, e:
+                print(e)
         # Error reporting by client program
         elif self.path == "http://puush.me/api/oshi":
             # Don't care what the data is; I'm not the developer. ;)
-            self.send_response_header(200, {"Content-Type":"text/html"})
-            # No idea what this is, just that the server returned this
+            # It also failed to decompress. Weird.
+            self.send_response_header(200, {
+                "Content-Type":"text/html",
+                "Content-Encoding":"gzip"
+            })
+            # No idea what this is, just that the server returned it.
             self.wfile.write(
                 "\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03"\
                 "\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-        elif self.path == "http://puush.me/api/hist":
-            self.send_response_header(200, {"Content-Type":"text/plain"})
-            self.wfile.write("0\n") # Maybe later
+
         # Submission of registration form
         elif self.path == "/register":
             try:
@@ -227,27 +249,32 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<style type="text/css">'\
                         'a {text-decoration: none; color: blue;}'\
                         'table {margin-left: 20px; margin-top: 30px;}'\
-                        'th, td { font: 90% monospace; text-align: left;}'\
-                        'th { font-weight: bold; padding-right: 14px; padding-bottom: 3px;}'\
+                        'th, td {font: 90% monospace; text-align: left;}'\
+                        'th {font-weight: bold; padding-right: 14px; padding-bottom: 3px;}'\
                         'td {padding-right: 14px;}'\
                         'td.s, th.s {text-align: right;}'\
                         '</style></head><body>'\
                         '<table summary="Directory Listing" cellpadding="0" cellspacing="0">'\
-                        '<thead><tr><th class="n">Name</th><th class="m">Owner</th>'\
-                        '<th class="t">Type</th></tr></thead><tbody>')
+                        '<thead><tr>'\
+                        '<th class="n">Name</th><th class="v">Views</th>'\
+                        '<th class="o">Owner</th><th class="t">Type</th>'\
+                        '</tr></thead><tbody>')
                     for item in database:
                         self.wfile.write(
-                            '<tr><td class="n"><a href="{0}">{1}</a></td>'\
-                            '<td class="m">{2}</td><td class="t">{3}</td></tr>'.format(
-                                item[2],item[4],item[1],item[3]))
+                            '<tr>'\
+                            '<td class="n"><a href="{0}">{1}</a></td>'\
+                            '<td class="v">{2}</td>'\
+                            '<td class="o">{3}</td>'\
+                            '<td class="t">{4}</td></tr>'.format(
+                                item[2],item[4],item[5],item[1],item[3]))
                     self.wfile.write("</tbody></table></body></html>")
                 else:
-                    self.send_response_header(401, {})
-                    self.wfile.write("nope")
+                    self.send_response_header(401, {"Content-Type":"text/plain"})
+                    self.wfile.write("Unauthorised")
             # Blank entry
             except KeyError:
-                self.send_response_header(400, {})
-                self.wfile.write("nope")
+                self.send_response_header(400, {"Content-Type":"text/html"})
+                self.wfile.write("At least put <i>something</i>.")
     
     def handle_upload(self):
         """Receives data, authenticates, writes file to disk and database"""
@@ -272,21 +299,46 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "apikey":form_data_key})
             db_connection.commit()
             database.execute(
-                "INSERT INTO files (owner, url, mimetype, filename) VALUES "\
-                "(:owner, :url, :mimetype, :filename);", {
+                "INSERT INTO files "\
+                "(owner, url, mimetype, filename, views, timestamp) VALUES "\
+                "(:owner, :url, :mimetype, :filename, 0, :timestamp);", {
                     "owner":self.data[1],
                     "url":new_filename,
                     "mimetype":self.detect_mimetype(form["f"].filename),
-                    "filename":form["f"].filename})
+                    "filename":form["f"].filename,
+                    "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
             db_connection.commit()
-            return UPLOAD_URL + new_filename, len(form_data_file)
-
+            database.execute("SELECT * FROM files WHERE url=:url;",{
+                "url":new_filename})
+            return UPLOAD_URL + new_filename, data[0], len(form_data_file)
+    def handle_history(self, apikey):
+        print(apikey)
+        self.select_from_db("users", "apikey", apikey)
+        database.execute("SELECT * FROM files WHERE owner=:owner;",{
+            "owner":self.data[1]})
+        upload_list = []
+        hist_items = 0
+        for item in database:
+            if hist_items <= 10:
+                hist_item = "1\n{0},{1},http://{2}:{3}/{4},{5},{6},".format(
+                    #string.zfill(item[0],7),
+                    item[0],item[6],
+                    HOST_IP,PORT,item[2],
+                    item[4],item[5])
+                upload_list.append(hist_item)
+                hist_items += 1
+        # Latest file uploaded first
+        upload_list.reverse()
+        upload_list[0] = string.replace(upload_list[0],"1","0",1)
+        upload_list.append("1\n")
+        self.wfile.write("".join(upload_list))
+        print("sent history to client")
 if __name__ == "__main__":
+    os.chdir(".")
     CONFIG_FILE = "server.cfg"
     config = ConfigParser.RawConfigParser()
     if CONFIG_FILE not in os.listdir("."):
         if raw_input("No config file present. Make one now? [y/n]: ") == "y":
-
             config.add_section("Server")
             config.set("Server", "IP", raw_input("IP: "))
             config.set("Server", "Port", input("Port: "))
@@ -295,9 +347,9 @@ if __name__ == "__main__":
                 raw_input("Database Name (Ex: puushdata.sqlite): "))
             config.set("Server", "ViewfilesPassword",
                 raw_input("Password to access host:port/viewfiles: "))
-            config.set("Server", "EnableRegistration", "True")
-            config.set("Server", "UploadDir","./Uploads/")
-            config.set("Server", "ProgVer","83")
+            config.set("Server", "EnableRegistration", 1)
+            config.set("Server", "UploadDir", "./Uploads/")
+            config.set("Server", "ProgVer", "83")
             with open(CONFIG_FILE, "wb") as configfile:
                 config.write(configfile)
         else:
@@ -308,10 +360,11 @@ if __name__ == "__main__":
     PASSWORD_SALT = config.get("Server", "PasswordSalt")
     DATABASE_NAME = config.get("Server", "DatabaseName")
     VIEW_PASSWORD = config.get("Server", "ViewfilesPassword")
-    ENABLE_REGISTRATION = config.get("Server", "EnableRegistration")
+    ENABLE_REGISTRATION = bool(config.get("Server", "EnableRegistration"))
     UPLOAD_DIR = config.get("Server", "UploadDir")
     PROGRAM_VERSION = config.get("Server", "ProgVer")
-    UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
+    UPLOAD_URL = "http://" + HOST_IP + ":" + PORT + "/"
+    
     if DATABASE_NAME not in os.listdir("."):
         db_connection = sqlite3.connect(DATABASE_NAME)
         database = db_connection.cursor()
@@ -324,13 +377,14 @@ if __name__ == "__main__":
         # File ID, owner's email, url of file, file mimetype, filename
         database.execute("CREATE TABLE files (id INTEGER PRIMARY KEY, "\
                          "owner TEXT, url TEXT, mimetype TEXT, "\
-                         "filename TEXT);")
+                         "filename TEXT, views INTEGER, timestamp TEXT);")
         db_connection.commit()
     else:
         db_connection = sqlite3.connect(DATABASE_NAME)
         database = db_connection.cursor()
+    
     Server = BaseHTTPServer.HTTPServer((HOST_IP, PORT), RequestHandler)
-    print("Puush Server Started - {0}:{1}".format(HOST_IP, PORT))
+    print("Puush Server Started - " + HOST_IP + ":" + PORT)
     try:
         Server.serve_forever()
     except KeyboardInterrupt:
