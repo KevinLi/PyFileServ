@@ -117,18 +117,18 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         # Because main page
         elif self.path == "/":
-            self.send_response_header(200, {"Content-Type":"text/html"})
-            self.wfile.write("hi")
+            self.send_response_header(200, {"Content-Type":"text/plain"})
+            self.wfile.write("Nothing here.")
         elif self.path == "/viewfiles":
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.wfile.write(
-                    '<!doctype html><html><head>'\
-                    '<meta charset=utf-8 /><title>Authentication'\
-                    '</title></head><body>'\
-                    '<form action="/viewfiles" method="post">'\
-                    'Password:<br /><input type="password" name="pass" /><br />'\
-                    '<br /><input type="submit" value="&quot;Login&quot;" />'\
-                    '</form>')
+                '<!doctype html><html><head>'\
+                '<meta charset=utf-8 /><title>Authentication'\
+                '</title></head><body>'\
+                '<form action="/viewfiles" method="post">'\
+                'Password:<br /><input type="password" name="pass" /><br />'\
+                '<br /><input type="submit" value="&quot;Login&quot;" />'\
+                '</form>')
         # Easter egg!
         elif self.path == "/418":
             self.send_response_header(418, {"Content-Type":"text/plain"})
@@ -162,7 +162,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     userinfo["key"] = self.data[3]
                     userinfo["usage"] = self.data[4]
                     # Premium?, API Key, Expiry, Usage
-                    self.wfile.write("1,{0},,{1}".format(
+                    self.wfile.write("{0},{1},,{2}".format(
+                        QUOTA,
                         userinfo["key"],
                         userinfo["usage"]
                     ))
@@ -181,18 +182,30 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
                     "CONTENT_TYPE":self.headers["Content-Type"]})
+            # Data from form: apikey and item number
             try:
+                # Checks if user is in database. Raises TypeError if not.
                 self.select_from_db("users", "apikey", form["k"].value)
-                self.select_from_db("files","id",form["i"].value)
+                # Get file's size from item number
+                self.select_from_db("files", "id", form["i"].value)
+                file_size = self.data[5]
+                # Remove file
                 os.remove(UPLOAD_DIR+self.data[2])
+                # Remove file entry from database by item number
                 database.execute("DELETE FROM files WHERE id=:id",{
                     "id":form["i"].value})
                 db_connection.commit()
+                # Lower file usage by file size
+                database.execute(
+                    "UPDATE users SET usage=usage-:file_len WHERE apikey=:apikey;",
+                        {"file_len":file_size,
+                        "apikey":form["k"].value})
+                db_connection.commit()
                 self.send_response_header(200, {"Content-Type":"text/html"})
                 self.handle_history(form["k"].value)
-
-            except BaseException, e:
-                print(e)
+            # Nonexistent user
+            except TypeError:
+                pass
         # Error reporting by client program
         elif self.path == "http://puush.me/api/oshi":
             # Don't care what the data is; I'm not the developer. ;)
@@ -225,7 +238,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     db_connection.commit()
                     self.send_response_header(200, {"Content-Type":"text/plain"})
                     self.wfile.write(
-                        "Registered!"\
+                        "Registered! "\
                         "You may now log in with your email and password.")
                 else:
                     self.send_response_header(200, {"Content-Type":"text/plain"})
@@ -293,24 +306,27 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             new_file = open(UPLOAD_DIR + new_filename, "wb")
             new_file.write(form_data_file)
             new_file.close()
+            file_length = len(form_data_file)
             database.execute(
                 "UPDATE users SET usage=usage+:file_len WHERE apikey=:apikey;",
-                    {"file_len":len(form_data_file),
+                    {"file_len":file_length,
                     "apikey":form_data_key})
             db_connection.commit()
+            print("added to usage")
             database.execute(
                 "INSERT INTO files "\
-                "(owner, url, mimetype, filename, views, timestamp) VALUES "\
-                "(:owner, :url, :mimetype, :filename, 0, :timestamp);", {
+                "(owner, url, mimetype, filename, size, views, timestamp) VALUES "\
+                "(:owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
                     "owner":self.data[1],
                     "url":new_filename,
                     "mimetype":self.detect_mimetype(form["f"].filename),
                     "filename":form["f"].filename,
+                    "size":file_length,
                     "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
             db_connection.commit()
             database.execute("SELECT * FROM files WHERE url=:url;",{
                 "url":new_filename})
-            return UPLOAD_URL + new_filename, data[0], len(form_data_file)
+            return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
     def handle_history(self, apikey):
         self.select_from_db("users", "apikey", apikey)
         database.execute("SELECT * FROM files WHERE owner=:owner;",{
@@ -321,14 +337,18 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if hist_items <= 10:
                 hist_item = "1\n{0},{1},http://{2}:{3}/{4},{5},{6},".format(
                     #string.zfill(item[0],7),
-                    item[0],item[6],
+                    item[0],item[7],
                     HOST_IP,PORT,item[2],
-                    item[4],item[5])
+                    item[4],item[6])
                 upload_list.append(hist_item)
                 hist_items += 1
         # Latest file uploaded first
         upload_list.reverse()
-        upload_list[0] = string.replace(upload_list[0],"1","0",1)
+        try:
+            upload_list[0] = string.replace(upload_list[0],"1","0",1)
+        # No history
+        except IndexError:
+            pass
         upload_list.append("1\n")
         self.wfile.write("".join(upload_list))
 if __name__ == "__main__":
@@ -339,29 +359,41 @@ if __name__ == "__main__":
         if raw_input("No config file present. Make one now? [y/n]: ") == "y":
             config.add_section("Server")
             config.set("Server", "IP", raw_input("IP: "))
-            config.set("Server", "Port", input("Port: "))
+            config.set("Server", "Port", raw_input("Port: "))
             config.set("Server", "PasswordSalt", raw_input("Password Salt: "))
             config.set("Server", "DatabaseName",
                 raw_input("Database Name (Ex: puushdata.sqlite): "))
             config.set("Server", "ViewfilesPassword",
-                raw_input("Password to access host:port/viewfiles: "))
+                raw_input("Password to access http://HOSTIP:PORT/viewfiles: "))
             config.set("Server", "EnableRegistration", 1)
+            config.set("Server", "Quota",
+                raw_input("Enable quota? (200MB) [1/0]: "))
             config.set("Server", "UploadDir", "./Uploads/")
             config.set("Server", "ProgVer", "83")
             with open(CONFIG_FILE, "wb") as configfile:
                 config.write(configfile)
         else:
             exit()
-    config.read(CONFIG_FILE)
-    HOST_IP = config.get("Server", "IP")
-    PORT = int(config.get("Server", "Port"))
-    PASSWORD_SALT = config.get("Server", "PasswordSalt")
-    DATABASE_NAME = config.get("Server", "DatabaseName")
-    VIEW_PASSWORD = config.get("Server", "ViewfilesPassword")
-    ENABLE_REGISTRATION = bool(config.get("Server", "EnableRegistration"))
-    UPLOAD_DIR = config.get("Server", "UploadDir")
-    PROGRAM_VERSION = config.get("Server", "ProgVer")
-    UPLOAD_URL = "http://" + HOST_IP + ":" + str(PORT) + "/"
+    try:
+        config.read(CONFIG_FILE)
+        HOST_IP = config.get("Server", "IP")
+        PORT = int(config.get("Server", "Port"))
+        PASSWORD_SALT = config.get("Server", "PasswordSalt")
+        DATABASE_NAME = config.get("Server", "DatabaseName")
+        VIEW_PASSWORD = config.get("Server", "ViewfilesPassword")
+        ENABLE_REGISTRATION = bool(config.get("Server", "EnableRegistration"))
+        UPLOAD_DIR = config.get("Server", "UploadDir")
+        PROGRAM_VERSION = config.get("Server", "ProgVer")
+        UPLOAD_URL = "http://" + HOST_IP + ":" + str(PORT) + "/"
+        QUOTA = int(config.get("Server", "Quota"))
+    except ConfigParser.NoOptionError, e:
+        print("One or more options are missing/invalid:")
+        print(e)
+        exit()
+    except ValueError, e:
+        print("One or more options are invalid")
+        print(e)
+        exit()
     
     if DATABASE_NAME not in os.listdir("."):
         db_connection = sqlite3.connect(DATABASE_NAME)
@@ -375,8 +407,10 @@ if __name__ == "__main__":
         # File ID, owner's email, url of file, file mimetype, filename
         database.execute("CREATE TABLE files (id INTEGER PRIMARY KEY, "\
                          "owner TEXT, url TEXT, mimetype TEXT, "\
-                         "filename TEXT, views INTEGER, timestamp TEXT);")
+                         "filename TEXT, size INTEGER, views INTEGER, timestamp TEXT);")
         db_connection.commit()
+        print("Remember to register at http://{0}:{1}/register !".format(
+            HOST_IP,PORT))
     else:
         db_connection = sqlite3.connect(DATABASE_NAME)
         database = db_connection.cursor()
