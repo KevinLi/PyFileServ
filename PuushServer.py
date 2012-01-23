@@ -119,13 +119,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/":
             self.send_response_header(200, {"Content-Type":"text/plain"})
             self.wfile.write("Nothing here.")
-        elif self.path == "/viewfiles":
+        elif self.path == "/admin":
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.wfile.write(
                 '<!doctype html><html><head>'\
                 '<meta charset=utf-8 /><title>Authentication'\
                 '</title></head><body>'\
-                '<form action="/viewfiles" method="post">'\
+                '<form action="/admin" method="post">'\
                 'Password:<br /><input type="password" name="pass" /><br />'\
                 '<br /><input type="submit" value="&quot;Login&quot;" />'\
                 '</form>')
@@ -138,6 +138,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("404")
     
     def do_POST(self):
+        global QUOTA
         if self.path == "http://puush.me/api/hist":
             self.send_response_header(200, {"Content-Type":"text/html"})
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
@@ -161,7 +162,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.data[3] == userinfo["key"]):
                     userinfo["key"] = self.data[3]
                     userinfo["usage"] = self.data[4]
-                    # Premium?, API Key, Expiry, Usage
                     self.wfile.write("{0},{1},,{2}".format(
                         QUOTA,
                         userinfo["key"],
@@ -248,21 +248,30 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except KeyError:
                 self.send_response_header(400, {"Content-Type":"text/html"})
                 self.wfile.write("At least put <i>something</i> in there.")
-        elif self.path == "/viewfiles":
+        elif self.path == "/admin":
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
                     "CONTENT_TYPE":self.headers["Content-Type"]})
+            print(form.keys())
             try:
-                if form["pass"].value == VIEW_PASSWORD:
+                if form["q"]:
+                    QUOTA = int(form["q"].value)
+                    print(QUOTA)
+                    config.set("Server", "Quota", form["q"].value)
+            except KeyError:
+                pass
+            try:
+                if form["pass"].value == ADMIN_PASS:
                     self.send_response_header(200, {"Content-Type":"text/html"})
                     database.execute("SELECT * FROM files;")
                     self.wfile.write(
                         '<!doctype html><html><head>'\
                         '<meta charset=utf-8 /><title>Files</title>'\
                         '<style type="text/css">'\
+                        'body { padding-left: 20px; font: 90% monospace;}'\
                         'a {text-decoration: none; color: blue;}'\
-                        'table {margin-left: 20px; margin-top: 30px;}'\
-                        'th, td {font: 90% monospace; text-align: left;}'\
+                        'table {margin-top: 30px;}'\
+                        'th, td {text-align: left;}'\
                         'th {font-weight: bold; padding-right: 14px; padding-bottom: 3px;}'\
                         'td {padding-right: 14px;}'\
                         'td.s, th.s {text-align: right;}'\
@@ -279,8 +288,22 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             '<td class="v">{2}</td>'\
                             '<td class="o">{3}</td>'\
                             '<td class="t">{4}</td></tr>'.format(
-                                item[2],item[4],item[5],item[1],item[3]))
-                    self.wfile.write("</tbody></table></body></html>")
+                                item[2],item[4],item[6],item[1],item[3]))
+                    self.wfile.write("</tbody></table><hr /><br />")
+                    quota_setting = ["Off","1","Enable"] if QUOTA == 0 else ["On","0","Disable"]
+                    print(quota_setting)
+                    self.wfile.write(
+                        'Quota: {0}'\
+                        '<form name="quota" action="/admin" method="POST">'\
+                        '<input type="hidden" name="q" value="{1}">'\
+                        '<input type="submit" value="{2}"></form><br />'.format(
+                            quota_setting[0],
+                            quota_setting[1],
+                            quota_setting[2]))
+                    
+                    self.wfile.write("Registration: {0}<br />".format(
+                        "Off" if ENABLE_REGISTRATION == 0 else "On"))
+                    self.wfile.write("</body></html>")
                 else:
                     self.send_response_header(401, {"Content-Type":"text/plain"})
                     self.wfile.write("Unauthorised")
@@ -353,6 +376,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.wfile.write("".join(upload_list))
 if __name__ == "__main__":
     os.chdir(".")
+    # Can't put this in the config file, can I? :P
     CONFIG_FILE = "server.cfg"
     config = ConfigParser.RawConfigParser()
     if CONFIG_FILE not in os.listdir("."):
@@ -363,8 +387,8 @@ if __name__ == "__main__":
             config.set("Server", "PasswordSalt", raw_input("Password Salt: "))
             config.set("Server", "DatabaseName",
                 raw_input("Database Name (Ex: puushdata.sqlite): "))
-            config.set("Server", "ViewfilesPassword",
-                raw_input("Password to access http://HOSTIP:PORT/viewfiles: "))
+            config.set("Server", "AdminPassword",
+                raw_input("Admin password: "))
             config.set("Server", "EnableRegistration", 1)
             config.set("Server", "Quota",
                 raw_input("Enable quota? (200MB) [1/0]: "))
@@ -380,7 +404,7 @@ if __name__ == "__main__":
         PORT = int(config.get("Server", "Port"))
         PASSWORD_SALT = config.get("Server", "PasswordSalt")
         DATABASE_NAME = config.get("Server", "DatabaseName")
-        VIEW_PASSWORD = config.get("Server", "ViewfilesPassword")
+        ADMIN_PASS = config.get("Server", "AdminPassword")
         ENABLE_REGISTRATION = bool(config.get("Server", "EnableRegistration"))
         UPLOAD_DIR = config.get("Server", "UploadDir")
         PROGRAM_VERSION = config.get("Server", "ProgVer")
@@ -421,5 +445,7 @@ if __name__ == "__main__":
         Server.serve_forever()
     except KeyboardInterrupt:
         Server.server_close()
+        with open(CONFIG_FILE, "wb") as configfile:
+            config.write(configfile)
         database.close()
         print("Server Stopped.")

@@ -27,5 +27,5 @@ Configuration
 
 Browser-accessible URLs:
 	- /register for registering users
-	- /viewfiles to view all uploaded files
+	- /admin for accessing admin page
 	- /XXXX where Xs are alphanumerical characters
