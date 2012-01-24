@@ -26,6 +26,7 @@ import string
 import mimetypes
 # File retrieval
 import re
+import threading
 # Configuration
 import ConfigParser
 
@@ -86,9 +87,11 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "Content-Type":self.data[3],
                     "Content-Disposition":'inline; filename="{0}"'.format(
                         self.data[4])})
-                self.wfile.write(data)
+                file_thread = threading.Thread(target=self.wfile.write, args=(data,))
+                file_thread.start()
+                # self.wfile.write(data)
                 database.execute(
-                    "UPDATE files SET views=views+1 WHERE url=:url",{
+                    "UPDATE files SET views=views+1 WHERE url=:url", {
                         "url":filename})
                 db_connection.commit()
             # Nonexistent file
@@ -117,7 +120,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 self.wfile.write("Registration is disabled.")
             self.wfile.write("</body></html>")
-
+# PAGE ICON
+        # Seems to be requested by most browsers.
+        elif self.path == "favicon.ico":
+            self.send_response_header(200, {})
 # MAIN PAGE
         elif self.path == "/":
             self.send_response_header(200, {"Content-Type":"text/plain"})
@@ -199,9 +205,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.select_from_db("files", "id", form["i"].value)
                 file_size = self.data[5]
                 # Remove file
-                os.remove(UPLOAD_DIR+self.data[2])
+                os.remove(UPLOAD_DIR + self.data[2])
                 # Remove file entry from database by item number
-                database.execute("DELETE FROM files WHERE id=:id",{
+                database.execute("DELETE FROM files WHERE id=:id", {
                     "id":form["i"].value})
                 db_connection.commit()
                 # Lower file usage by file size
@@ -234,7 +240,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                     environ={"REQUEST_METHOD":"POST",
                         "CONTENT_TYPE":self.headers["Content-Type"]})
-                if ( re.search(".+@.+\..+", form["email"].value)
+                if (re.search(".+@.+\..+", form["email"].value)
                      and len(form["pass"].value) >= 5
                      and form["pass"].value == form["passc"].value
                    ):
@@ -265,21 +271,25 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "CONTENT_TYPE":self.headers["Content-Type"]})
             try:
                 if "d" in form.keys():
-                    # Copied from /api/del
+                    # Mostly copied from /api/del
                     # Get file's size from item number
-                    self.select_from_db("files", "id", form["d"].value)
+                    self.select_from_db("files", "url", form["d"].value)
                     file_size = self.data[5]
+                    file_owner = self.data[1]
                     # Remove file
-                    os.remove(UPLOAD_DIR+self.data[2])
-                    # Remove file entry from database by item number
-                    database.execute("DELETE FROM files WHERE id=:id",{
-                        "id":form["d"].value})
+                    os.remove(UPLOAD_DIR + self.data[2])
+                    # Get owner apikey from email
+                    self.select_from_db("users", "email", file_owner)
+                    owner_apikey = self.data[3]
+                    # Remove file entry from database by url
+                    database.execute("DELETE FROM files WHERE url=:url", {
+                        "url":form["d"].value})
                     db_connection.commit()
                     # Lower file usage by file size
                     database.execute(
-                        "UPDATE users SET usage=usage-:file_len WHERE owner=:owner;",
+                        "UPDATE users SET usage=usage-:file_len WHERE apikey=:apikey;",
                             {"file_len":file_size,
-                            "owner":form["o"].value})
+                            "apikey":owner_apikey})
                     db_connection.commit()
                     self.redirect_back()
                 elif "q" in form.keys():
@@ -288,8 +298,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     config.set("Server", "Quota", form["q"].value)
                     self.redirect_back()
                 elif "r" in form.keys():
+                    print(form["r"].value)
                     ENABLE_REGISTRATION = bool(int(form["r"].value))
-                    config.set("Server", "EnableRegistration", int(form["r"].value))
+                    config.set("Server", "EnableRegistration", form["r"].value)
                     self.redirect_back()
                 elif "pass1" in form.keys():
                     if form["pass1"].value == ADMIN_PASS:
@@ -333,17 +344,17 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             '<input type="hidden" name="d" value="{0}" />'\
                             '<input type="hidden" name="o" value="{4}" />'\
                             '<input type="submit" value="Delete" /></form></td></tr>'.format(
-                                item[2],item[4],item[6],item[7],item[1],item[3]))
+                                item[2], item[4], item[6], item[7], item[1], item[3]))
                     self.wfile.write("</tbody></table><br />")
-                    quota_setting = ["Off","1","Enable"] if QUOTA == 0 else ["On","0","Disable"]
+                    quota_setting = ["Off", "1", "Enable"] if QUOTA == 0 else ["On", "0", "Disable"]
                     self.wfile.write(
                         'Quota: {0}'\
                         '<form name="quota" action="/admin" method="POST">'\
                         '<input type="hidden" name="q" value="{1}" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
-                            quota_setting[0],quota_setting[1],quota_setting[2]))
+                            quota_setting[0], quota_setting[1], quota_setting[2]))
                     
-                    registration_setting = ["Off","1","Enable"] if ENABLE_REGISTRATION == False else ["On","0","Disable"]
+                    registration_setting = ["Off", "1", "Enable"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable"]
                     self.wfile.write(
                         'Registration: {0}'\
                         '<form name="registration" action="/admin" method="POST">'\
@@ -366,6 +377,19 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.wfile.write("</body></html>")
                 else:
                     self.wfile.write("Unauthorised")
+        elif self.path == "http://puush.me/api/thumb":
+            form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={
+                "REQUEST_METHOD":"POST",
+                "CONTENT_TYPE":self.headers["Content-Type"]})
+            userkey = form["k"].value
+            imagenum = form["i"].value
+            self.send_response_header(200, {"Content-Type":"image/png"})
+            self.wfile.write(
+                "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A\x00\x00\x00\x0D\x49\x48\x44"\
+                "\x52\x00\x00\x00\x01\x00\x00\x00\x01\x01\x00\x00\x00\x00\x37"\
+                "\x6E\xF9\x24\x00\x00\x00\x10\x49\x44\x41\x54\x78\x9C\x62\x60"\
+                "\x01\x00\x00\x00\xFF\xFF\x03\x00\x00\x06\x00\x05\x57\xBF\xAB"\
+                "\xD4\x00\x00\x00\x00\x49\x45\x4E\x44\xAE\x42\x60\x82")
     
     def handle_upload(self):
         """Receives data, authenticates, writes file to disk and database"""
@@ -401,12 +425,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "size":file_length,
                     "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
             db_connection.commit()
-            database.execute("SELECT * FROM files WHERE url=:url;",{
+            database.execute("SELECT * FROM files WHERE url=:url;", {
                 "url":new_filename})
             return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
     def handle_history(self, apikey):
         self.select_from_db("users", "apikey", apikey)
-        database.execute("SELECT * FROM files WHERE owner=:owner;",{
+        database.execute("SELECT * FROM files WHERE owner=:owner;", {
             "owner":self.data[1]})
         upload_list = []
         hist_items = 0
@@ -414,15 +438,15 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if hist_items <= 10:
                 hist_item = "1\n{0},{1},http://{2}:{3}/{4},{5},{6},".format(
                     #string.zfill(item[0],7),
-                    item[0],item[7],
-                    HOST_IP,PORT,item[2],
-                    item[4],item[6])
+                    item[0], item[7],
+                    HOST_IP, PORT, item[2],
+                    item[4], item[6])
                 upload_list.append(hist_item)
                 hist_items += 1
         # Latest file uploaded first
         upload_list.reverse()
         try:
-            upload_list[0] = string.replace(upload_list[0],"1","0",1)
+            upload_list[0] = string.replace(upload_list[0], "1", "0", 1)
         # No history
         except IndexError:
             pass
@@ -466,7 +490,7 @@ if __name__ == "__main__":
         PASSWORD_SALT = config.get("Server", "PasswordSalt")
         DATABASE_NAME = config.get("Server", "DatabaseName")
         ADMIN_PASS = config.get("Server", "AdminPass")
-        ENABLE_REGISTRATION = bool(config.get("Server", "EnableRegistration"))
+        ENABLE_REGISTRATION = bool(int(config.get("Server", "EnableRegistration")))
         UPLOAD_DIR = config.get("Server", "UploadDir")
         PROGRAM_VERSION = config.get("Server", "ProgVer")
         UPLOAD_URL = "http://" + HOST_IP + ":" + str(PORT) + "/"
@@ -495,7 +519,7 @@ if __name__ == "__main__":
                          "filename TEXT, size INTEGER, views INTEGER, timestamp TEXT);")
         db_connection.commit()
         print("Remember to register at http://{0}:{1}/register !".format(
-            HOST_IP,PORT))
+            HOST_IP, PORT))
     else:
         db_connection = sqlite3.connect(DATABASE_NAME)
         database = db_connection.cursor()
