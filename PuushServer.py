@@ -299,7 +299,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         if form["pass"].value == ADMIN_PASS:
                             ADMIN_PASS = form["newpass"].value
                             config.set("Server", "AdminPass", form["newpass"].value)
-                            self.redirect_back()
                     database.execute("SELECT * FROM files;")
                     self.wfile.write(
                         '<!doctype html><html><head>'\
@@ -395,9 +394,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.select_from_db("users", "apikey", form_data_key)
         if self.data[3] == form_data_key:
             new_filename = self.gen_filename()
-            new_file = open(UPLOAD_DIR + new_filename, "wb")
-            new_file.write(form_data_file)
-            new_file.close()
+            with open(UPLOAD_DIR + new_filename, "wb") as new_file:
+                new_file.write(form_data_file)
             file_length = len(form_data_file)
             database.execute(
                 "UPDATE users SET usage=usage+:file_len WHERE apikey=:apikey;",
@@ -443,26 +441,29 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         upload_list.append("1\n")
         self.wfile.write("".join(upload_list))
     def admin_handle_delete(self, url):
-        # Get file's size from item number
-        self.select_from_db("files", "url", url)
-        file_size = self.data[5]
-        file_owner = self.data[1]
-        # Remove file
-        os.remove(UPLOAD_DIR + self.data[2])
-        # Get owner apikey from email
-        self.select_from_db("users", "email", file_owner)
-        owner_apikey = self.data[3]
-        # Remove file entry from database by url
-        database.execute("DELETE FROM files WHERE url=:url", {
-            "url":url})
-        db_connection.commit()
-        # Lower file usage by file size
-        database.execute(
-            "UPDATE users SET usage=usage-:file_len WHERE apikey=:apikey;",
-                {"file_len":file_size,
-                "apikey":owner_apikey})
-        db_connection.commit()
-        self.redirect_back()
+        try:
+            # Get file's size from item number
+            self.select_from_db("files", "url", url)
+            file_size = self.data[5]
+            file_owner = self.data[1]
+            # Remove file
+            os.remove(UPLOAD_DIR + self.data[2])
+            # Get owner apikey from email
+            self.select_from_db("users", "email", file_owner)
+            owner_apikey = self.data[3]
+            # Remove file entry from database by url
+            database.execute("DELETE FROM files WHERE url=:url", {
+                "url":url})
+            db_connection.commit()
+            # Lower file usage by file size
+            database.execute(
+                "UPDATE users SET usage=usage-:file_len WHERE apikey=:apikey;",
+                    {"file_len":file_size,
+                    "apikey":owner_apikey})
+            db_connection.commit()
+        # Already deleted; probably tried to refresh.
+        except TypeError:
+            pass
     
 if __name__ == "__main__":
     os.chdir(".")
@@ -482,7 +483,7 @@ if __name__ == "__main__":
             config.set("Server", "EnableRegistration", 1)
             config.set("Server", "Quota",
                 raw_input("Enable quota? (200MB) [1/0]: "))
-            config.set("Server", "UploadDir", "./Uploads/")
+            config.set("Server", "UploadDir", "Uploads/")
             config.set("Server", "ProgVer", "83")
             with open(CONFIG_FILE, "wb") as configfile:
                 config.write(configfile)
@@ -509,6 +510,10 @@ if __name__ == "__main__":
         print("One or more options are invalid:")
         print(e)
         exit()
+    
+    if UPLOAD_DIR[:-1] not in os.listdir("."):
+        print("Creating upload directory...")
+        os.mkdir(UPLOAD_DIR, 0744)
     
     if DATABASE_NAME not in os.listdir("."):
         db_connection = sqlite3.connect(DATABASE_NAME)

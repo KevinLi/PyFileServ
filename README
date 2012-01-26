@@ -1,7 +1,7 @@
 Puush Server
 A Puush Server. In Python.
 
-This script allows you to save files captured with puush to your own server.
+This script allows you to save and manage files captured with puush to your own server.
 
 Requirements
 	- Python
@@ -18,8 +18,7 @@ Requirements
 Configuration
 	- Run script to generate config file.
 	- An account is needed to upload. Register at http://ip:port/register
-	- Remember to set registration to 0 in config file after account creation.
-	- Create the upload directory; Make sure it's writable by the script.
+	- Remember to disable registration from the admin page after account creation.
 	- If Windows, add to %appdata%\puush\puush.ini:
 		- ProxyServer = HOST_IP
 		- ProxyPort = PORT
