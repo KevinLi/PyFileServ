@@ -105,23 +105,26 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/register":
             # HTML because registration form
             self.send_response_header(200, {"Content-Type":"text/html"})
-            self.wfile.write("<!doctype html><html><head>"\
-                             "<meta charset=utf-8 /><title>Registration"\
-                             "</title></head><body>")
+            self.wfile.write(
+                '<!doctype html><html><head>'\
+                '<meta charset=utf-8 /><title>Registration</title>'\
+                '<link rel="stylesheet" type="text/css" href="style.css" />'\
+                '</head><body>')
             if ENABLE_REGISTRATION == True:
                 self.wfile.write(
-                    '<form action="/register" method="post">'\
-                    'Email:<br /><input type="text" name="email" /><br />'\
-                    'Password:<br /><input type="password" name="pass" /><br />'\
-                    'Confirm Password:<br /><input type="password" name="passc" />'\
-                    '<br /><input type="submit" value="Register" />'\
+                    '<table>'\
+                    '<form action="/register" method="POST">'\
+                    '<tr><td><input type="text" name="email" placeholder="Email" /></td></tr>'\
+                    '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
+                    '<tr><td><input type="password" name="passc" placeholder="Confirm Password" /></td></tr>'\
+                    '<tr><td><input type="submit" value="Register" /></td></tr>'\
                     '</form>')
             else:
                 self.wfile.write("Registration is disabled.")
             self.wfile.write("</body></html>")
 # PAGE ICON
         # Seems to be requested by most browsers.
-        elif self.path == "favicon.ico":
+        elif self.path == "/favicon.ico":
             self.send_response_header(200, {})
 # MAIN PAGE
         elif self.path == "/":
@@ -132,12 +135,26 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.wfile.write(
                 '<!doctype html><html><head>'\
-                '<meta charset=utf-8 /><title>Authentication'\
-                '</title></head><body>'\
-                '<form action="/admin" method="post">'\
-                '<input type="password" name="pass" placeholder="Password" /><br />'\
-                '<input type="submit" value="&quot;Login&quot;" />'\
-                '</form>')
+                '<meta charset=utf-8 /><title>Authentication</title>'\
+                '<link rel="stylesheet" type="text/css" href="style.css" />'\
+                '</head><body>'\
+                '<table><form action="/admin" method="post">'\
+                '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
+                '<tr><td><input type="submit" value="&quot;Login&quot;" /></td></tr>'\
+                '</form></body></html>')
+# CSS
+        elif self.path == "/style.css":
+            self.wfile.write(
+                'body {background-color: #D0D0D0; color: #000000; padding: 10px; font: 90% monospace;}'\
+                'a {text-decoration: none; color: #0000FF;}'\
+                'table {padding: 5px; border: 1px dotted #000000;}'\
+                'th, td {text-align: left;}'\
+                'th {font-weight: bold; padding: 5px;}'\
+                'td {padding: 0px 5px;}'\
+                '.statGreen {background-color: #00FF00; font-weight: bold; text-align: center;}'\
+                '.statRed {background-color: #FF0000; font-weight: bold; text-align: center;}'\
+                '.status {background-color: #C0C0C0; font-weight: bold; text-align: center;}'
+            )
         # Easter egg!
         elif self.path == "/418":
             self.send_response_header(418, {"Content-Type":"text/plain"})
@@ -200,7 +217,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             try:
                 # Checks if user is in database. Raises TypeError if not.
                 self.select_from_db("users", "apikey", form["k"].value)
-                # Get file's size from item number
+                # Get file's size from file id number
                 self.select_from_db("files", "id", form["i"].value)
                 file_size = self.data[5]
                 # Remove file
@@ -220,18 +237,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # Nonexistent user
             except TypeError:
                 pass
-# ERROR REPORTING
+# "ERROR REPORTING"
         elif self.path == "http://puush.me/api/oshi":
-            # Don't care what the data is; I'm not the developer. ;)
-            # It also failed to decompress. Weird.
             self.send_response_header(200, {
                 "Content-Type":"text/html",
                 "Content-Encoding":"gzip"
             })
-            # No idea what this is, just that the server returned it.
-            self.wfile.write(
-                "\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03"\
-                "\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+            self.wfile.write("\n")
 
 # REGISTRATION
         elif self.path == "/register":
@@ -282,7 +294,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         config.set("Server", "Quota", form["q"].value)
                         self.redirect_back()
                     elif "r" in form.keys():
-                        print(form["r"].value)
                         ENABLE_REGISTRATION = bool(int(form["r"].value))
                         config.set("Server", "EnableRegistration", form["r"].value)
                         self.redirect_back()
@@ -295,14 +306,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.wfile.write(
                         '<!doctype html><html><head>'\
                         '<meta charset=utf-8 /><title>Files</title>'\
-                        '<style type="text/css">'\
-                        'body {background-color: #D0D0D0; padding-left: 20px; padding-top: 10px; font: 90% monospace;}'\
-                        'a {text-decoration: none; color: blue;}'\
-                        'table {margin-top: 0px 5px; border: 1px dotted black;}'\
-                        'th, td {text-align: left;}'\
-                        'th {font-weight: bold; padding: 5px; margin: 5px;}'\
-                        'td {padding: 0px 5px; margin: 0px 5px;}'\
-                        '</style></head><body>'\
+                        '<link rel="stylesheet" type="text/css" href="style.css" />'\
+                        '</head><body>'\
                         '<table summary="Directory Listing" cellpadding="0" cellspacing="0">'\
                         '<thead><tr>'\
                         '<th class="n">Name</th><th class="v">Views</th>'\
@@ -326,25 +331,26 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<tr><td><input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="Delete" /></td></tr></form></tbody></table><br />')
                     
-                    quota_setting = ["Off", "1", "Enable"] if QUOTA == 0 else ["On", "0", "Disable"]
+                    quota_setting = ["On", "1", "Disable"] if QUOTA == 0 else ["Off", "0", "Enable"]
                     self.wfile.write(
-                        '<table><tr><td>Quota: {0}'\
+                        '<table><tr><td>Quota: <div class="status">{0}</div>'\
                         '<form name="quota" action="/admin" method="POST">'\
                         '<input type="hidden" name="q" value="{1}" />'\
                         '<input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
                             quota_setting[0], quota_setting[1], quota_setting[2]))
                     
-                    registration_setting = ["Off", "1", "Enable"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable"]
+                    registration_setting = ["Off", "1", "Enable","statGreen"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable","statRed"]
                     self.wfile.write(
-                        'Registration: {0}'\
+                        'Registration: <div class="{3}">{0}</div>'\
                         '<form name="registration" action="/admin" method="POST">'\
                         '<input type="hidden" name="r" value="{1}" />'\
                         '<input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form></td>'.format(
                             registration_setting[0],
                             registration_setting[1],
-                            registration_setting[2]))
+                            registration_setting[2],
+                            registration_setting[3]))
                     self.wfile.write(
                         '<td><table>'\
                         '<form name="changepass" action="/admin" method="POST">'\
@@ -500,14 +506,14 @@ if __name__ == "__main__":
         ENABLE_REGISTRATION = bool(int(config.get("Server", "EnableRegistration")))
         UPLOAD_DIR = config.get("Server", "UploadDir")
         PROGRAM_VERSION = config.get("Server", "ProgVer")
-        UPLOAD_URL = "http://" + HOST_IP + ":" + str(PORT) + "/"
+        UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
         QUOTA = int(config.get("Server", "Quota"))
     except ConfigParser.NoOptionError, e:
         print("One or more options are missing/invalid:")
         print(e)
         exit()
     except ValueError, e:
-        print("One or more options are invalid")
+        print("One or more options are invalid:")
         print(e)
         exit()
     
@@ -532,10 +538,11 @@ if __name__ == "__main__":
         database = db_connection.cursor()
     
     Server = BaseHTTPServer.HTTPServer((HOST_IP, PORT), RequestHandler)
-    print("Puush Server Started - " + HOST_IP + ":" + str(PORT))
+    print("Puush Server Started - {0}:{1}".format(HOST_IP,PORT))
     try:
         Server.serve_forever()
     except KeyboardInterrupt:
+        print("Stopping...")
         with open(CONFIG_FILE, "wb") as configfile:
             config.write(configfile)
         Server.server_close()
