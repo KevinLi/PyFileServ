@@ -264,72 +264,68 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.wfile.write("At least put <i>something</i> in there.")
 # ADMINISTRATION
         elif self.path == "/admin":
-            self.send_response_header(200, {"Content-Type":"text/html"})
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
                     "CONTENT_TYPE":self.headers["Content-Type"]})
-            try:
-                if "d" in form.keys():
-                    # Mostly copied from /api/del
-                    # Get file's size from item number
-                    self.select_from_db("files", "url", form["d"].value)
-                    file_size = self.data[5]
-                    file_owner = self.data[1]
-                    # Remove file
-                    os.remove(UPLOAD_DIR + self.data[2])
-                    # Get owner apikey from email
-                    self.select_from_db("users", "email", file_owner)
-                    owner_apikey = self.data[3]
-                    # Remove file entry from database by url
-                    database.execute("DELETE FROM files WHERE url=:url", {
-                        "url":form["d"].value})
-                    db_connection.commit()
-                    # Lower file usage by file size
-                    database.execute(
-                        "UPDATE users SET usage=usage-:file_len WHERE apikey=:apikey;",
-                            {"file_len":file_size,
-                            "apikey":owner_apikey})
-                    db_connection.commit()
-                    self.redirect_back()
-                elif "q" in form.keys():
-                    # Require password in each form?
-                    QUOTA = int(form["q"].value)
-                    config.set("Server", "Quota", form["q"].value)
-                    self.redirect_back()
-                elif "r" in form.keys():
-                    print(form["r"].value)
-                    ENABLE_REGISTRATION = bool(int(form["r"].value))
-                    config.set("Server", "EnableRegistration", form["r"].value)
-                    self.redirect_back()
-                elif "pass1" in form.keys():
-                    if form["pass1"].value == ADMIN_PASS:
-                        ADMIN_PASS = form["pass2"].value
-                        config.set("Server", "AdminPass", form["pass2"].value)
-                        self.redirect_back()
-            # KeyErrors shouldn't happen, but...
-            except KeyError, e:
-                pass
             if "pass" in form.keys():
-                if form["pass"].value == ADMIN_PASS:
+                if form["pass"].value == ADMIN_PASS and ADMIN_PASS != "":
+                    self.send_response_header(200, {"Content-Type":"text/html"})
+                    if "d" in form.keys():
+                        for url in xrange(len(form["d"])):
+                            # Mostly copied from /api/del
+                            # Get file's size from item number
+                            self.select_from_db("files", "url", form["d"][url].value)
+                            file_size = self.data[5]
+                            file_owner = self.data[1]
+                            # Remove file
+                            os.remove(UPLOAD_DIR + self.data[2])
+                            # Get owner apikey from email
+                            self.select_from_db("users", "email", file_owner)
+                            owner_apikey = self.data[3]
+                            # Remove file entry from database by url
+                            database.execute("DELETE FROM files WHERE url=:url", {
+                                "url":form["d"][url].value})
+                            db_connection.commit()
+                            # Lower file usage by file size
+                            database.execute(
+                                "UPDATE users SET usage=usage-:file_len WHERE apikey=:apikey;",
+                                    {"file_len":file_size,
+                                    "apikey":owner_apikey})
+                            db_connection.commit()
+                            self.redirect_back()
+                    elif "q" in form.keys():
+                        # Require password in each form?
+                        QUOTA = int(form["q"].value)
+                        config.set("Server", "Quota", form["q"].value)
+                        self.redirect_back()
+                    elif "r" in form.keys():
+                        print(form["r"].value)
+                        ENABLE_REGISTRATION = bool(int(form["r"].value))
+                        config.set("Server", "EnableRegistration", form["r"].value)
+                        self.redirect_back()
+                    elif "pass" in form.keys() and "newpass" in form.keys():
+                        if form["pass"].value == ADMIN_PASS:
+                            ADMIN_PASS = form["newpass"].value
+                            config.set("Server", "AdminPass", form["newpass"].value)
+                            self.redirect_back()
                     database.execute("SELECT * FROM files;")
                     self.wfile.write(
                         '<!doctype html><html><head>'\
                         '<meta charset=utf-8 /><title>Files</title>'\
                         '<style type="text/css">'\
-                        'body {background-color: #D0D0D0; padding-left: 20px; font: 90% monospace;}'\
+                        'body {background-color: #D0D0D0; padding-left: 20px; padding-top: 10px; font: 90% monospace;}'\
                         'a {text-decoration: none; color: blue;}'\
-                        'table {margin-top: 30px; border: 1px dotted black;}'\
+                        'table {margin-top: 0px 5px; border: 1px dotted black;}'\
                         'th, td {text-align: left;}'\
-                        'th {font-weight: bold; padding-right: 14px; padding-bottom: 3px;}'\
-                        'td {padding-right: 14px;}'\
-                        'td.s, th.s {text-align: right;}'\
+                        'th {font-weight: bold; padding: 5px; margin: 5px;}'\
+                        'td {padding: 0px 5px; margin: 0px 5px;}'\
                         '</style></head><body>'\
                         '<table summary="Directory Listing" cellpadding="0" cellspacing="0">'\
                         '<thead><tr>'\
                         '<th class="n">Name</th><th class="v">Views</th>'\
                         '<th class="ts">Timestamp (Server Time)</th><th class="o">Owner</th>'\
                         '<th class="t">Type</th><th class="d">Delete</th>'\
-                        '</tr></thead><tbody>')
+                        '</tr></thead><tbody><form name="delete" action="/admin" method="POST">')
                     for item in database:
                         self.wfile.write(
                             '<tr>'\
@@ -339,17 +335,20 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             '<td class="o">{4}</td>'\
                             '<td class="t">{5}</td>'\
                             '<td class="d">'\
-                            '<form name="delete" action="/admin" method="POST">'\
-                            '<input type="hidden" name="d" value="{0}" />'\
                             '<input type="hidden" name="o" value="{4}" />'\
-                            '<input type="submit" value="Delete" /></form></td></tr>'.format(
+                            '<input type="checkbox" name="d" value="{0}" />'\
+                            '</td></tr>'.format(
                                 item[2], item[4], item[6], item[7], item[1], item[3]))
-                    self.wfile.write("</tbody></table><br />")
+                    self.wfile.write(
+                        '<tr><td><input type="password" name="pass" placeholder="Password" />'\
+                        '<input type="submit" value="Delete" /></td></tr></form></tbody></table><br />')
+                    
                     quota_setting = ["Off", "1", "Enable"] if QUOTA == 0 else ["On", "0", "Disable"]
                     self.wfile.write(
-                        'Quota: {0}'\
+                        '<table><tr><td>Quota: {0}'\
                         '<form name="quota" action="/admin" method="POST">'\
                         '<input type="hidden" name="q" value="{1}" />'\
+                        '<input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
                             quota_setting[0], quota_setting[1], quota_setting[2]))
                     
@@ -358,24 +357,26 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         'Registration: {0}'\
                         '<form name="registration" action="/admin" method="POST">'\
                         '<input type="hidden" name="r" value="{1}" />'\
-                        '<input type="submit" value="{2}" /></form>'.format(
+                        '<input type="password" name="pass" placeholder="Password" />'\
+                        '<input type="submit" value="{2}" /></form></td>'.format(
                             registration_setting[0],
                             registration_setting[1],
                             registration_setting[2]))
                     self.wfile.write(
-                        '<table>'\
+                        '<td><table>'\
                         '<form name="changepass" action="/admin" method="POST">'\
-                        '<tr><td>Change Administrator Password:</td>'\
-                        '</tr><tr><td>Current Password:</td>'\
-                        '<td><input type="password" name="pass1" /></td>'\
-                        '</tr><tr><td>New Password:</td>'\
-                        '<td><input type="password" name="pass2" /></td>'\
-                        '</tr><tr>'\
-                        '<td><input type="submit" value="Change" /></form></td>'\
-                        '</tr></table>')
+                        '<tr><td>Change Administrator Password:</td></tr>'\
+                        '<tr><td><input type="password" name="pass" placeholder="Current Password" /></td></tr>'\
+                        '<tr><td><input type="password" name="newpass" placeholder="New Password" /></td></tr>'\
+                        '<tr><td><input type="submit" value="Change" /></form></td></tr>'\
+                        '</table></td></tr></table>')
                     self.wfile.write("</body></html>")
                 else:
+                    self.send_response_header(403, {"Content-Type":"text/plain"})
                     self.wfile.write("Unauthorised")
+            else:
+                self.send_response_header(400, {"Content-Type":"text/plain"})
+                self.wfile.write("Bad Request")
         elif self.path == "http://puush.me/api/thumb":
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={
                 "REQUEST_METHOD":"POST",
@@ -383,6 +384,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             userkey = form["k"].value
             imagenum = form["i"].value
             self.send_response_header(200, {"Content-Type":"image/png"})
+            # Smallest PNG ever.
+            # I've no idea how to manipulate images in Python,
+            # so I probably won't implement this.
             self.wfile.write(
                 "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A\x00\x00\x00\x0D\x49\x48\x44"\
                 "\x52\x00\x00\x00\x01\x00\x00\x00\x01\x01\x00\x00\x00\x00\x37"\
@@ -471,7 +475,7 @@ if __name__ == "__main__":
             config.set("Server", "DatabaseName",
                 raw_input("Database Name (ex: puushdata.sqlite): "))
             config.set("Server", "AdminPass",
-                raw_input("Admin password: "))
+                raw_input("Admin password (Blank to disable): "))
             config.set("Server", "EnableRegistration", 1)
             config.set("Server", "Quota",
                 raw_input("Enable quota? (200MB) [1/0]: "))
