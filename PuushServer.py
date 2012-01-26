@@ -268,17 +268,16 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 environ={"REQUEST_METHOD":"POST",
                     "CONTENT_TYPE":self.headers["Content-Type"]})
             if "pass" in form.keys():
-                if form["pass"].value == ADMIN_PASS and ADMIN_PASS != "":
+                if form["pass"].value == ADMIN_PASS:
                     self.send_response_header(200, {"Content-Type":"text/html"})
                     if "d" in form.keys():
                         # This feels really hacky, but it works.
                         try:
-                            self.handle_delete(form["d"].value)
+                            self.admin_handle_delete(form["d"].value)
                         except AttributeError:
                             for url in form["d"]:
-                                self.handle_delete(url.value)
+                                self.admin_handle_delete(url.value)
                     elif "q" in form.keys():
-                        # Require password in each form?
                         QUOTA = int(form["q"].value)
                         config.set("Server", "Quota", form["q"].value)
                         self.redirect_back()
@@ -439,7 +438,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             pass
         upload_list.append("1\n")
         self.wfile.write("".join(upload_list))
-    def handle_delete(self, url):
+    def admin_handle_delete(self, url):
         # Get file's size from item number
         self.select_from_db("files", "url", url)
         file_size = self.data[5]
@@ -468,7 +467,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     
 if __name__ == "__main__":
     os.chdir(".")
-    # Can't put this in the config file, can I? :P
     CONFIG_FILE = "server.cfg"
     config = ConfigParser.RawConfigParser()
     if CONFIG_FILE not in os.listdir("."):
