@@ -135,8 +135,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 '<meta charset=utf-8 /><title>Authentication'\
                 '</title></head><body>'\
                 '<form action="/admin" method="post">'\
-                'Password:<br /><input type="password" name="pass" /><br />'\
-                '<br /><input type="submit" value="&quot;Login&quot;" />'\
+                '<input type="password" name="pass" placeholder="Password" /><br />'\
+                '<input type="submit" value="&quot;Login&quot;" />'\
                 '</form>')
         # Easter egg!
         elif self.path == "/418":
@@ -271,28 +271,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if form["pass"].value == ADMIN_PASS and ADMIN_PASS != "":
                     self.send_response_header(200, {"Content-Type":"text/html"})
                     if "d" in form.keys():
-                        for url in form["d"]:
-                            # Mostly copied from /api/del
-                            # Get file's size from item number
-                            self.select_from_db("files", "url", url.value)
-                            file_size = self.data[5]
-                            file_owner = self.data[1]
-                            # Remove file
-                            os.remove(UPLOAD_DIR + self.data[2])
-                            # Get owner apikey from email
-                            self.select_from_db("users", "email", file_owner)
-                            owner_apikey = self.data[3]
-                            # Remove file entry from database by url
-                            database.execute("DELETE FROM files WHERE url=:url", {
-                                "url":url.value})
-                            db_connection.commit()
-                            # Lower file usage by file size
-                            database.execute(
-                                "UPDATE users SET usage=usage-:file_len WHERE apikey=:apikey;",
-                                    {"file_len":file_size,
-                                    "apikey":owner_apikey})
-                            db_connection.commit()
-                            self.redirect_back()
+                        # This feels really hacky, but it works.
+                        try:
+                            self.handle_delete(form["d"].value)
+                        except AttributeError:
+                            for url in form["d"]:
+                                self.handle_delete(url.value)
                     elif "q" in form.keys():
                         # Require password in each form?
                         QUOTA = int(form["q"].value)
@@ -455,6 +439,28 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             pass
         upload_list.append("1\n")
         self.wfile.write("".join(upload_list))
+    def handle_delete(self, url):
+        # Get file's size from item number
+        self.select_from_db("files", "url", url)
+        file_size = self.data[5]
+        file_owner = self.data[1]
+        # Remove file
+        os.remove(UPLOAD_DIR + self.data[2])
+        # Get owner apikey from email
+        self.select_from_db("users", "email", file_owner)
+        owner_apikey = self.data[3]
+        # Remove file entry from database by url
+        database.execute("DELETE FROM files WHERE url=:url", {
+            "url":url})
+        db_connection.commit()
+        # Lower file usage by file size
+        database.execute(
+            "UPDATE users SET usage=usage-:file_len WHERE apikey=:apikey;",
+                {"file_len":file_size,
+                "apikey":owner_apikey})
+        db_connection.commit()
+        self.redirect_back()
+    
     def redirect_back(self):
         self.wfile.write(
             '<meta HTTP-EQUIV="REFRESH" content="0; url=http://{0}:{1}/admin" />'.format(
