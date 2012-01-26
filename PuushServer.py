@@ -271,10 +271,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if form["pass"].value == ADMIN_PASS and ADMIN_PASS != "":
                     self.send_response_header(200, {"Content-Type":"text/html"})
                     if "d" in form.keys():
-                        for url in xrange(len(form["d"])):
+                        for url in form["d"]:
                             # Mostly copied from /api/del
                             # Get file's size from item number
-                            self.select_from_db("files", "url", form["d"][url].value)
+                            self.select_from_db("files", "url", url.value)
                             file_size = self.data[5]
                             file_owner = self.data[1]
                             # Remove file
@@ -284,7 +284,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             owner_apikey = self.data[3]
                             # Remove file entry from database by url
                             database.execute("DELETE FROM files WHERE url=:url", {
-                                "url":form["d"][url].value})
+                                "url":url.value})
                             db_connection.commit()
                             # Lower file usage by file size
                             database.execute(
