@@ -292,11 +292,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     elif "q" in form.keys():
                         QUOTA = int(form["q"].value)
                         config.set("Server", "Quota", form["q"].value)
-                        self.redirect_back()
                     elif "r" in form.keys():
                         ENABLE_REGISTRATION = bool(int(form["r"].value))
                         config.set("Server", "EnableRegistration", form["r"].value)
-                        self.redirect_back()
                     elif "pass" in form.keys() and "newpass" in form.keys():
                         if form["pass"].value == ADMIN_PASS:
                             ADMIN_PASS = form["newpass"].value
@@ -465,11 +463,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 "apikey":owner_apikey})
         db_connection.commit()
         self.redirect_back()
-    
-    def redirect_back(self):
-        self.wfile.write(
-            '<meta HTTP-EQUIV="REFRESH" content="0; url=http://{0}:{1}/admin" />'.format(
-                HOST_IP, PORT))
     
 if __name__ == "__main__":
     os.chdir(".")
