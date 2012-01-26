@@ -88,8 +88,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "Content-Disposition":'inline; filename="{0}"'.format(
                         self.data[4])})
                 file_thread = threading.Thread(target=self.wfile.write, args=(data,))
-                file_thread.start()
-                # self.wfile.write(data)
+                file_thread.run()
                 database.execute(
                     "UPDATE files SET views=views+1 WHERE url=:url", {
                         "url":filename})
