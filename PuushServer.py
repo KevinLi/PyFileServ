@@ -30,16 +30,17 @@ import threading
 # Configuration
 import ConfigParser
 
+def gen_api_key():
+    """Returns an api key. Only used during registration"""
+    rand_str = "".join(
+        [str(time.time() + random.random()) for x in xrange(5)]
+    )
+    return hashlib.md5(rand_str).hexdigest().upper()
+        
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def hash_pass(self, password):
         """Returns a hashed and salted string from password"""
         return hashlib.md5(PASSWORD_SALT + password).hexdigest()
-    def gen_api_key(self):
-        """Returns an api key. Only used during registration"""
-        rand_str = "".join(
-            [str(time.time() + random.random()) for x in xrange(5)]
-        )
-        return hashlib.md5(rand_str).hexdigest().upper()
         
     def gen_filename(self):
         file = "".join(random.choice(
@@ -65,7 +66,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """Gets data from database"""
         database.execute("SELECT * FROM {0} WHERE {1} = :{1};".format(
             table, item), {item:value})
-        self.data = database.fetchone()
+        return database.fetchone()
         
     def send_response_header(self, code, headers):
         """Sends headers to the client program"""
@@ -81,13 +82,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if re.search("\/[A-Za-z0-9]{4}$", self.path):
             try:
                 filename = self.path[1:]
-                self.select_from_db("files", "url", filename)
-                data = open(UPLOAD_DIR + filename, "rb").read()
+                db_data = self.select_from_db("files", "url", filename)
+                file_data = open(UPLOAD_DIR + filename, "rb").read()
                 self.send_response_header(200, {
-                    "Content-Type":self.data[3],
+                    "Content-Type":db_data[3],
                     "Content-Disposition":'inline; filename="{0}"'.format(
-                        self.data[4])})
-                file_thread = threading.Thread(target=self.wfile.write, args=(data,))
+                        db_data[4])})
+                file_thread = threading.Thread(target=self.wfile.write, args=(file_data,))
                 file_thread.run()
                 database.execute(
                     "UPDATE files SET views=views+1 WHERE url=:url", {
@@ -184,13 +185,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 userinfo["password"] = authstring[1][2:]
             elif authstring[1][0] == "k":
                 userinfo["key"] = authstring[1][2:]
-            self.select_from_db("users", "email", userinfo["email"])
+            db_data = self.select_from_db("users", "email", userinfo["email"])
             try:
-                if self.data[1] == userinfo["email"] and (
-                        self.data[2] == self.hash_pass(userinfo["password"]) or 
-                        self.data[3] == userinfo["key"]):
-                    userinfo["key"] = self.data[3]
-                    userinfo["usage"] = self.data[4]
+                if db_data[1] == userinfo["email"] and (
+                        db_data[2] == self.hash_pass(userinfo["password"]) or 
+                        db_data[3] == userinfo["key"]):
+                    userinfo["key"] = db_data[3]
+                    userinfo["usage"] = db_data[4]
                     self.wfile.write("{0},{1},,{2}".format(
                         QUOTA,
                         userinfo["key"],
@@ -216,12 +217,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # Data from form: apikey and item number
             try:
                 # Checks if user is in database. Raises TypeError if not.
-                self.select_from_db("users", "apikey", form["k"].value)
+                db_data = self.select_from_db("users", "apikey", form["k"].value)
                 # Get file's size from file id number
-                self.select_from_db("files", "id", form["i"].value)
-                file_size = self.data[5]
+                db_data = self.select_from_db("files", "id", form["i"].value)
+                file_size = db_data[5]
                 # Remove file
-                os.remove(UPLOAD_DIR + self.data[2])
+                os.remove(UPLOAD_DIR + db_data[2])
                 # Remove file entry from database by item number
                 database.execute("DELETE FROM files WHERE id=:id", {
                     "id":form["i"].value})
@@ -260,7 +261,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         "VALUES (:email, :pass, :apikey, 0)", {
                             "email":form["email"].value,
                             "pass":self.hash_pass(form["pass"].value),
-                            "apikey":self.gen_api_key()})
+                            "apikey":gen_api_key()})
                     db_connection.commit()
                     self.send_response_header(200, {"Content-Type":"text/plain"})
                     self.wfile.write(
@@ -391,8 +392,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         # form_data_c = form["c"].value
         # form_data_z = form["z"].value
         form_data_file = form["f"].value
-        self.select_from_db("users", "apikey", form_data_key)
-        if self.data[3] == form_data_key:
+        db_data = self.select_from_db("users", "apikey", form_data_key)
+        if db_data[3] == form_data_key:
             new_filename = self.gen_filename()
             with open(UPLOAD_DIR + new_filename, "wb") as new_file:
                 new_file.write(form_data_file)
@@ -403,10 +404,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "apikey":form_data_key})
             db_connection.commit()
             database.execute(
-                "INSERT INTO files "\
-                "(owner, url, mimetype, filename, size, views, timestamp) VALUES "\
-                "(:owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
-                    "owner":self.data[1],
+                "INSERT INTO files VALUES "\
+                "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
+                    "owner":db_data[1],
                     "url":new_filename,
                     "mimetype":self.detect_mimetype(form["f"].filename),
                     "filename":form["f"].filename,
@@ -417,9 +417,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 "url":new_filename})
             return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
     def handle_history(self, apikey):
-        self.select_from_db("users", "apikey", apikey)
+        db_data = self.select_from_db("users", "apikey", apikey)
         database.execute("SELECT * FROM files WHERE owner=:owner;", {
-            "owner":self.data[1]})
+            "owner":db_data[1]})
         upload_list = []
         hist_items = 0
         for item in database:
@@ -443,16 +443,16 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def admin_handle_delete(self, url):
         try:
             # Get file's size from item number
-            self.select_from_db("files", "url", url)
-            file_size = self.data[5]
-            file_owner = self.data[1]
+            db_data = self.select_from_db("files", "url", url)
+            file_size = db_data[5]
+            file_owner = db_data[1]
             # Remove file
-            os.remove(UPLOAD_DIR + self.data[2])
+            os.remove(UPLOAD_DIR + db_data[2])
             # Get owner apikey from email
             self.select_from_db("users", "email", file_owner)
-            owner_apikey = self.data[3]
+            owner_apikey = db_data[3]
             # Remove file entry from database by url
-            database.execute("DELETE FROM files WHERE url=:url", {
+            database.execute("DELETE FROM files WHERE url=:url;", {
                 "url":url})
             db_connection.commit()
             # Lower file usage by file size
@@ -475,7 +475,7 @@ if __name__ == "__main__":
             config.set("Server", "IP",
                 raw_input("IP address or domain name: "))
             config.set("Server", "Port", raw_input("Port: "))
-            config.set("Server", "PasswordSalt", raw_input("Password Salt: "))
+            config.set("Server", "PasswordSalt", gen_api_key())
             config.set("Server", "DatabaseName",
                 raw_input("Database Name (ex: puushdata.sqlite): "))
             config.set("Server", "AdminPass",
@@ -515,19 +515,21 @@ if __name__ == "__main__":
         print("Creating upload directory...")
         os.mkdir(UPLOAD_DIR, 0744)
     
-    if DATABASE_NAME not in os.listdir("."):
+    if not DATABASE_NAME:
+        print("No database name. Please add one to {0}.".format(CONFIG_FILE))
+    elif DATABASE_NAME not in os.listdir("."):
         db_connection = sqlite3.connect(DATABASE_NAME)
         database = db_connection.cursor()
         print("Generating database...")
-        # User ID, email, password hash, api key, usage (in bytes)
-        database.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, "\
-                         "email TEXT, passwordHash TEXT, apikey TEXT, "\
-                         "usage INTEGER);")
+        database.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, "\
+            "email TEXT, passwordHash TEXT, apikey TEXT, "\
+            "usage INTEGER);")
         db_connection.commit()
-        # File ID, owner's email, url of file, file mimetype, filename
-        database.execute("CREATE TABLE files (id INTEGER PRIMARY KEY, "\
-                         "owner TEXT, url TEXT, mimetype TEXT, "\
-                         "filename TEXT, size INTEGER, views INTEGER, timestamp TEXT);")
+        database.execute(
+            "CREATE TABLE files (id INTEGER PRIMARY KEY, "\
+            "owner TEXT, url TEXT, mimetype TEXT, "\
+            "filename TEXT, size INTEGER, views INTEGER, timestamp TEXT);")
         db_connection.commit()
         print("Remember to register at http://{0}:{1}/register !".format(
             HOST_IP, PORT))
