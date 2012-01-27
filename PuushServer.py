@@ -2,10 +2,9 @@
 """
 
 Known bugs: 
-    Crashes on cancellation of upload (program's fault)
+    Crashes on cancellation of upload (Client program's fault?)
 Todo: 
     Gzip send text? Plain text seems fine though.
-    POST /api/thumb (returns image)
 """
 
 # HTTP Server
@@ -28,6 +27,7 @@ import re
 import threading
 # Configuration
 import ConfigParser
+import getpass
 
 def gen_api_key():
     """Returns 32 hexadecimal characters in uppercase"""
@@ -90,7 +90,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 file_thread = threading.Thread(target=self.wfile.write, args=(file_data,))
                 file_thread.run()
                 database.execute(
-                    "UPDATE files SET views=views+1 WHERE url=:url", {
+                    "UPDATE files SET views=views+1 WHERE url=:url;", {
                         "url":filename})
                 db_connection.commit()
             # Nonexistent file
@@ -158,9 +158,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 'th, td {text-align: left;}'\
                 'th {font-weight: bold; padding: 5px;}'\
                 'td {padding: 0px 5px;}'\
-                '.statGreen {background-color: #00FF00; font-weight: bold; text-align: center;}'\
                 '.statRed {background-color: #FF0000; font-weight: bold; text-align: center;}'\
-                '.status {background-color: #C0C0C0; font-weight: bold; text-align: center;}'\
+                '.statGrey {background-color: #C0C0C0; font-weight: bold; text-align: center;}'\
                 '#main {text-align: center; padding: 10px;}'
             )
         # Easter egg!
@@ -264,8 +263,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                      and form["pass"].value == form["passc"].value
                    ):
                     database.execute(
-                        "INSERT INTO users (email, passwordHash, apikey, usage) "\
-                        "VALUES (:email, :pass, :apikey, 0)", {
+                        "INSERT INTO users VALUES (NULL, :email, :pass, :apikey, 0);", {
                             "email":form["email"].value,
                             "pass":self.hash_pass(form["pass"].value),
                             "apikey":gen_api_key()})
@@ -337,14 +335,14 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     
                     quota_setting = ["On", "1", "Disable"] if QUOTA == 0 else ["Off", "0", "Enable"]
                     self.wfile.write(
-                        '<table><tr><td>Quota: <div class="status">{0}</div>'\
+                        '<table><tr><td>Quota: <div class="statGrey">{0}</div>'\
                         '<form name="quota" action="/admin" method="POST">'\
                         '<input type="hidden" name="q" value="{1}" />'\
                         '<input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
                             quota_setting[0], quota_setting[1], quota_setting[2]))
                     
-                    registration_setting = ["Off", "1", "Enable","statGreen"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable","statRed"]
+                    registration_setting = ["Off", "1", "Enable","statGrey"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable","statRed"]
                     self.wfile.write(
                         'Registration: <div class="{3}">{0}</div>'\
                         '<form name="registration" action="/admin" method="POST">'\
@@ -485,7 +483,7 @@ if __name__ == "__main__":
             config.set("Server", "DatabaseName",
                 raw_input("Database Name (ex: puushdata.sqlite): "))
             config.set("Server", "AdminPass",
-                raw_input("Admin password (Blank to disable): "))
+                getpass.getpass("Admin password (Blank to disable): "))
             config.set("Server", "EnableRegistration", 1)
             config.set("Server", "Quota",
                 raw_input("Enable quota? (200MB) [1/0]: "))
