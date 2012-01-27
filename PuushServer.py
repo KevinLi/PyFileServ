@@ -2,11 +2,10 @@
 """
 
 Known bugs: 
-    Crashes on cancellation of upload
+    Crashes on cancellation of upload (program's fault)
 Todo: 
     Gzip send text? Plain text seems fine though.
     POST /api/thumb (returns image)
-    Optimisation? a+b is much faster than "{0}{1}".format(a,b)
 """
 
 # HTTP Server
@@ -31,7 +30,7 @@ import threading
 import ConfigParser
 
 def gen_api_key():
-    """Returns an api key. Only used during registration"""
+    """Returns 32 hexadecimal characters in uppercase"""
     rand_str = "".join(
         [str(time.time() + random.random()) for x in xrange(5)]
     )
@@ -39,7 +38,7 @@ def gen_api_key():
         
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def hash_pass(self, password):
-        """Returns a hashed and salted string from password"""
+        """Returns a hashed and salted string from input"""
         return hashlib.md5(PASSWORD_SALT + password).hexdigest()
         
     def gen_filename(self):
@@ -129,8 +128,15 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response_header(200, {})
 # MAIN PAGE
         elif self.path == "/":
-            self.send_response_header(200, {"Content-Type":"text/plain"})
-            self.wfile.write("Nothing here.")
+            self.send_response_header(200, {"Content-Type":"text/html"})
+            self.wfile.write(
+                '<!doctype html><html><head>'\
+                '<meta charset=utf-8 /><title>Authentication</title>'\
+                '<link rel="stylesheet" type="text/css" href="style.css" />'\
+                '</head><body><br /><br />'\
+                '<div id="main"><a href="./register">Register</a><br /><br />'\
+                '<a href="./admin">Admin Page</a></div>'\
+            )
 # ADMINISTRATION
         elif self.path == "/admin":
             self.send_response_header(200, {"Content-Type":"text/html"})
@@ -147,14 +153,15 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/style.css":
             self.wfile.write(
                 'body {background-color: #D0D0D0; color: #000000; padding: 10px; font: 90% monospace;}'\
-                'a {text-decoration: none; color: #0000FF;}'\
+                'a {text-decoration: none; color: #404040;}'\
                 'table {padding: 5px; border: 1px dotted #000000;}'\
                 'th, td {text-align: left;}'\
                 'th {font-weight: bold; padding: 5px;}'\
                 'td {padding: 0px 5px;}'\
                 '.statGreen {background-color: #00FF00; font-weight: bold; text-align: center;}'\
                 '.statRed {background-color: #FF0000; font-weight: bold; text-align: center;}'\
-                '.status {background-color: #C0C0C0; font-weight: bold; text-align: center;}'
+                '.status {background-color: #C0C0C0; font-weight: bold; text-align: center;}'\
+                '#main {text-align: center; padding: 10px;}'
             )
         # Easter egg!
         elif self.path == "/418":
@@ -303,11 +310,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     database.execute("SELECT * FROM files;")
                     self.wfile.write(
                         '<!doctype html><html><head>'\
-                        '<meta charset=utf-8 /><title>Files</title>'\
+                        '<meta charset=utf-8 /><title>Administration</title>'\
                         '<link rel="stylesheet" type="text/css" href="style.css" />'\
                         '</head><body>'\
-                        '<table summary="Directory Listing" cellpadding="0" cellspacing="0">'\
-                        '<thead><tr>'\
+                        '<table><thead><tr>'\
                         '<th class="n">Name</th><th class="v">Views</th>'\
                         '<th class="ts">Timestamp (Server Time)</th><th class="o">Owner</th>'\
                         '<th class="t">Type</th><th class="d">Delete</th>'\

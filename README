@@ -18,7 +18,7 @@ Requirements
 Configuration
 	- Run script to generate config file.
 	- An account is needed to upload. Register at http://ip:port/register
-	- Remember to disable registration from the admin page after account creation.
+	- Remember to disable registration from the admin page afterwards.
 	- If Windows, add to %appdata%\puush\puush.ini:
 		- ProxyServer = HOST_IP
 		- ProxyPort = PORT
