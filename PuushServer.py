@@ -28,6 +28,8 @@ import threading
 # Configuration
 import ConfigParser
 import getpass
+# Updates
+import urllib2
 
 def gen_api_key():
     """Returns 32 hexadecimal characters in uppercase"""
@@ -77,6 +79,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_response_header(200, {})
     def do_GET(self):
+        global AUTOUPDATE, PROGRAM_VERSION
 # FILES
         if re.search("\/[A-Za-z0-9]{4}$", self.path):
             try:
@@ -97,10 +100,16 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except IOError:
                 self.send_response_header(404, {"Content-Type":"text/plain"})
                 self.wfile.write("404")
-# UPDATE CHECK
+# UPDATE CHECK (WINDOWS)
+        # Mac OS X uses http://puush.me/dl/puush.xml and Sparkle
         elif self.path == "http://puush.me/dl/puush-win.txt?check=true":
             self.send_response_header(200, {"Content-Type":"text/plain"})
-            self.wfile.write(PROGRAM_VERSION)
+            if AUTOUPDATE == True:
+                version = urllib2.urlopen(self.path).read()
+                self.wfile.write(version)
+                PROGRAM_VERSION = version
+            else:
+                self.wfile.write(PROGRAM_VERSION+"\n")
 # REGISTRATION
         elif self.path == "/register":
             # HTML because registration form
@@ -166,6 +175,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/418":
             self.send_response_header(418, {"Content-Type":"text/plain"})
             self.wfile.write("418 I'm a teapot")
+# UPDATE
+        elif self.path == "http://puush.me/dl/puush-win.zip" or self.path == "http://puush.me/dl/puush.zip":
+            update = urllib2.urlopen(self.path).read()
+            self.wfile.write(update)
 # 404
         else:
             self.send_response_header(404, {"Content-Type":"text/plain"})
@@ -489,6 +502,7 @@ if __name__ == "__main__":
                 raw_input("Enable quota? (200MB) [1/0]: "))
             config.set("Server", "UploadDir", "Uploads/")
             config.set("Server", "ProgVer", "83")
+            config.set("Server", "AutoUpdate", "1")
             with open(CONFIG_FILE, "wb") as configfile:
                 config.write(configfile)
             print("Configuration file saved as {0}.".format(CONFIG_FILE))
@@ -506,6 +520,7 @@ if __name__ == "__main__":
         PROGRAM_VERSION = config.get("Server", "ProgVer")
         UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
         QUOTA = int(config.get("Server", "Quota"))
+        AUTOUPDATE = bool(int(config.get("Server","AutoUpdate")))
     except ConfigParser.NoOptionError, e:
         print("One or more options are missing/invalid:")
         print(e)
