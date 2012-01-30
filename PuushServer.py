@@ -169,7 +169,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 'td {padding: 0px 5px;}'\
                 '.statRed {background-color: #FF0000; font-weight: bold; text-align: center;}'\
                 '.statGrey {background-color: #C0C0C0; font-weight: bold; text-align: center;}'\
-                '#main {text-align: center; padding: 10px;}'
+                '#main {text-align: center; padding: 10px;}'\
+                '.s {text-align: right;}'
             )
         # Easter egg!
         elif self.path == "/418":
@@ -327,7 +328,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<table><thead><tr>'\
                         '<th class="n">Name</th><th class="v">Views</th>'\
                         '<th class="ts">Timestamp (Server Time)</th><th class="o">Owner</th>'\
-                        '<th class="t">Type</th><th class="d">Delete</th>'\
+                        '<th class="s">Size (Bytes)</th><th class="t">Type</th><th class="d">Delete</th>'\
                         '</tr></thead><tbody><form name="delete" action="/admin" method="POST">')
                     for item in database:
                         self.wfile.write(
@@ -336,12 +337,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             '<td class="v">{2}</td>'\
                             '<td class="ts">{3}</td>'\
                             '<td class="o">{4}</td>'\
-                            '<td class="t">{5}</td>'\
+                            '<td class="s">{5}</td>'\
+                            '<td class="t">{6}</td>'\
                             '<td class="d">'\
                             '<input type="hidden" name="o" value="{4}" />'\
                             '<input type="checkbox" name="d" value="{0}" />'\
                             '</td></tr>'.format(
-                                item[2], item[4], item[6], item[7], item[1], item[3]))
+                                item[2], item[4], item[6], item[7], item[1], item[5], item[3]))
                     self.wfile.write(
                         '<tr><td><input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="Delete" /></td></tr></form></tbody></table><br />')
@@ -466,7 +468,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # Remove file
             os.remove(UPLOAD_DIR + db_data[2])
             # Get owner apikey from email
-            self.select_from_db("users", "email", file_owner)
+            db_data = self.select_from_db("users", "email", file_owner)
             owner_apikey = db_data[3]
             # Remove file entry from database by url
             database.execute("DELETE FROM files WHERE url=:url;", {
