@@ -4,7 +4,7 @@
 Known bugs: 
     Crashes on cancellation of upload (Client program's fault?)
 Todo: 
-    Gzip send text? Plain text seems fine though.
+    Gzip data? Plain text seems fine though.
 """
 
 # HTTP Server
@@ -57,11 +57,11 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return filename
             
     def detect_mimetype(self, filename):
-        type = mimetypes.guess_type(filename, strict=True)[0]
-        if type == None:
+        filetype = mimetypes.guess_type(filename, strict=True)[0]
+        if filetype == None:
             return "text/plain"
         else:
-            return type
+            return filetype
 
     def select_from_db(self, table, item, value):
         """Gets data from database"""
@@ -80,7 +80,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_response_header(200, {})
     def do_GET(self):
         global AUTOUPDATE, PROGRAM_VERSION
-# FILES
+# FILE RETRIEVAL
         if re.search("\/[A-Za-z0-9]{4}$", self.path):
             try:
                 filename = self.path[1:]
@@ -121,18 +121,18 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 '</head><body>')
             if ENABLE_REGISTRATION == True:
                 self.wfile.write(
-                    '<table>'\
                     '<form action="/register" method="POST">'\
+                    '<table>'\
                     '<tr><td><input type="text" name="email" placeholder="Email" /></td></tr>'\
                     '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
                     '<tr><td><input type="password" name="passc" placeholder="Confirm Password" /></td></tr>'\
                     '<tr><td><input type="submit" value="Register" /></td></tr>'\
-                    '</form>')
+                    '</table></form>')
             else:
                 self.wfile.write("Registration is disabled.")
             self.wfile.write("</body></html>")
 # PAGE ICON
-        # Seems to be requested by most browsers.
+        # Seems to be requested by most/all browsers.
         elif self.path == "/favicon.ico":
             self.send_response_header(200, {})
 # MAIN PAGE
@@ -140,12 +140,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.wfile.write(
                 '<!doctype html><html><head>'\
-                '<meta charset=utf-8 /><title>Authentication</title>'\
+                '<meta charset=utf-8 /><title>Hi</title>'\
                 '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                '</head><body><br /><br />'\
-                '<div id="main"><a href="./register">Register</a><br /><br />'\
+                '</head><body><br /><br /><div id="main">'\
+                '<a href="./upload">Web Upload</a><br /><br />'\
+                '<a href="./register">Register</a><br /><br />'\
                 '<a href="./admin">Admin Page</a></div>'\
-            )
+                '</body></html>')
 # ADMINISTRATION
         elif self.path == "/admin":
             self.send_response_header(200, {"Content-Type":"text/html"})
@@ -154,10 +155,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 '<meta charset=utf-8 /><title>Authentication</title>'\
                 '<link rel="stylesheet" type="text/css" href="style.css" />'\
                 '</head><body>'\
-                '<table><form action="/admin" method="post">'\
+                '<form action="/admin" method="post"><table>'\
                 '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
                 '<tr><td><input type="submit" value="&quot;Login&quot;" /></td></tr>'\
-                '</form></body></html>')
+                '</table></form></body></html>')
 # CSS
         elif self.path == "/style.css":
             self.wfile.write(
@@ -176,6 +177,19 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/418":
             self.send_response_header(418, {"Content-Type":"text/plain"})
             self.wfile.write("418 I'm a teapot")
+# WEB UPLOAD
+        elif self.path == "/upload":
+            self.send_response_header(200, {"Content-Type":"text/html"})
+            self.wfile.write(
+                '<!doctype html><html><head>'\
+                '<meta charset=utf-8 /><title>Web Upload</title>'\
+                '<link rel="stylesheet" type="text/css" href="style.css" />'\
+                '</head><body>'\
+                '<form action="/upload" method="post" enctype="multipart/form-data"><table>'\
+                '<tr><td><input type="file" name="f" /></td></tr>'\
+                '<tr><td><input type="text" name="email" placeholder="Email" /></td></tr>'\
+                '<tr><td><input type="password" name="p" placeholder="Password" /><input type="submit" value="Upload" /></td></tr>'\
+                '</table></form></body></html>')
 # UPDATE
         elif self.path == "http://puush.me/dl/puush-win.zip" or self.path == "http://puush.me/dl/puush.zip":
             update = urllib2.urlopen(self.path).read()
@@ -290,7 +304,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.send_response_header(200, {"Content-Type":"text/plain"})
                     self.wfile.write(
                         "Please make sure that your email address is in the correct "\
-                        "format and that your password is more than 5 characters")
+                        "format and that your password is more than 5 characters.")
             except KeyError:
                 self.send_response_header(400, {"Content-Type":"text/html"})
                 self.wfile.write("At least put <i>something</i> in there.")
@@ -334,12 +348,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.wfile.write(
                             '<tr>'\
                             '<td class="n"><a href="{0}">{1}</a></td>'\
-                            '<td class="v">{2}</td>'\
-                            '<td class="ts">{3}</td>'\
-                            '<td class="o">{4}</td>'\
-                            '<td class="s">{5}</td>'\
-                            '<td class="t">{6}</td>'\
-                            '<td class="d">'\
+                            '<td class="v">{2}</td><td class="ts">{3}</td>'\
+                            '<td class="o">{4}</td><td class="s">{5}</td>'\
+                            '<td class="t">{6}</td><td class="d">'\
                             '<input type="hidden" name="o" value="{4}" />'\
                             '<input type="checkbox" name="d" value="{0}" />'\
                             '</td></tr>'.format(
@@ -390,15 +401,55 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             userkey = form["k"].value
             imagenum = form["i"].value
             self.send_response_header(200, {"Content-Type":"image/png"})
-            # Smallest PNG ever.
-            # I've no idea how to manipulate images in Python,
-            # so I probably won't implement this.
-            self.wfile.write(
-                "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A\x00\x00\x00\x0D\x49\x48\x44"\
-                "\x52\x00\x00\x00\x01\x00\x00\x00\x01\x01\x00\x00\x00\x00\x37"\
-                "\x6E\xF9\x24\x00\x00\x00\x10\x49\x44\x41\x54\x78\x9C\x62\x60"\
-                "\x01\x00\x00\x00\xFF\xFF\x03\x00\x00\x06\x00\x05\x57\xBF\xAB"\
-                "\xD4\x00\x00\x00\x00\x49\x45\x4E\x44\xAE\x42\x60\x82")
+            # Probably won't implement this.
+
+# WEB UPLOAD
+        elif self.path == "/upload":
+            form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={
+                "REQUEST_METHOD":"POST",
+                "CONTENT_TYPE":self.headers["Content-Type"]})
+            try:
+                db_data = self.select_from_db("users", "email", form["email"].value)
+                if str(db_data[2]) == self.hash_pass(form["p"].value):
+                    new_filename = self.gen_filename()
+                    with open(UPLOAD_DIR + new_filename, "wb") as new_file:
+                        new_file.write(form["f"].value)
+                    file_length = len(form["f"].value)
+                    database.execute(
+                        "UPDATE users SET usage=usage+:file_len WHERE email=:email;",
+                            {"file_len":file_length,
+                            "email":form["email"].value})
+                    db_connection.commit()
+                    database.execute(
+                        "INSERT INTO files VALUES "\
+                        "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
+                            "owner":db_data[1],
+                            "url":new_filename,
+                            "mimetype":self.detect_mimetype(form["f"].filename),
+                            "filename":form["f"].filename,
+                            "size":file_length,
+                            "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
+                    db_connection.commit()
+                    database.execute("SELECT * FROM files WHERE url=:url;", {
+                        "url":new_filename})
+                    self.send_response_header(200, {"Content-Type":"text/html"})
+                    self.wfile.write(
+                        '<!doctype html><html><head>'\
+                        '<meta charset=utf-8 /><title>Web Upload</title>'\
+                        '<link rel="stylesheet" type="text/css" href="style.css" />'\
+                        '</head><body>'\
+                        '<a href="{0}{1}">{0}{1}</a></body></html>'.format(
+                            UPLOAD_URL,new_filename))
+                else:
+                    self.send_response_header(403, {"Content-Type":"text/html"})
+                    self.wfile.write("Incorrect password")
+            except KeyError, e:
+            # Incomplete upload
+                pass
+            except TypeError, e:
+                print(e)
+                self.send_response_header(403, {"Content-Type":"text/html"})
+                self.wfile.write("Invalid email")
     
     def handle_upload(self):
         """Receives data, authenticates, writes file to disk and database"""

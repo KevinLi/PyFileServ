@@ -19,12 +19,8 @@ Configuration
 	- Run script to generate config file.
 	- An account is needed to upload. Register at http://ip:port/register
 	- Remember to disable registration from the admin page afterwards.
-	- If Windows, add to %appdata%\puush\puush.ini:
-		- ProxyServer = HOST_IP
+	- If Windows, add the following to %appdata%\puush\puush.ini:
+		- ProxyServer = ip or hostname
 		- ProxyPort = PORT
 	- Start server with "python PuushServer.py" in GNU screen or however.
-
-Browser-accessible URLs:
-	- /register for registering users
-	- /admin for accessing admin page
-	- /XXXX where Xs are alphanumerical characters
+	- Visit http://HOST:PORT/ for web-accessible pages
