@@ -24,12 +24,13 @@ import string
 import mimetypes
 # File retrieval
 import re
-import threading
 # Configuration
 import ConfigParser
 import getpass
 # Updates
 import urllib2
+# Threading
+import SocketServer
 
 def gen_api_key():
     """Returns 32 hexadecimal characters in uppercase"""
@@ -90,12 +91,11 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "Content-Type":db_data[3],
                     "Content-Disposition":'inline; filename="{0}"'.format(
                         db_data[4])})
-                file_thread = threading.Thread(target=self.wfile.write, args=(file_data,))
-                file_thread.run()
                 database.execute(
                     "UPDATE files SET views=views+1 WHERE url=:url;", {
                         "url":filename})
                 db_connection.commit()
+                self.wfile.write(file_data)
             # Nonexistent file
             except IOError:
                 self.send_response_header(404, {"Content-Type":"text/plain"})
@@ -338,12 +338,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<!doctype html><html><head>'\
                         '<meta charset=utf-8 /><title>Administration</title>'\
                         '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                        '</head><body>'\
+                        '</head><body><form name="delete" action="/admin" method="POST">'\
                         '<table><thead><tr>'\
                         '<th class="n">Name</th><th class="v">Views</th>'\
                         '<th class="ts">Timestamp (Server Time)</th><th class="o">Owner</th>'\
                         '<th class="s">Size (Bytes)</th><th class="t">Type</th><th class="d">Delete</th>'\
-                        '</tr></thead><tbody><form name="delete" action="/admin" method="POST">')
+                        '</tr></thead><tbody>')
                     for item in database:
                         self.wfile.write(
                             '<tr>'\
@@ -357,15 +357,15 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                 item[2], item[4], item[6], item[7], item[1], item[5], item[3]))
                     self.wfile.write(
                         '<tr><td><input type="password" name="pass" placeholder="Password" />'\
-                        '<input type="submit" value="Delete" /></td></tr></form></tbody></table><br />')
+                        '<input type="submit" value="Delete" /></td></tr></tbody></table></form><br />')
                     
                     quota_setting = ["On", "1", "Disable"] if QUOTA == 0 else ["Off", "0", "Enable"]
                     self.wfile.write(
-                        '<table><tr><td>Quota: <div class="statGrey">{0}</div>'\
                         '<form name="quota" action="/admin" method="POST">'\
+                        '<table><tr><td>Quota: <div class="statGrey">{0}</div>'\
                         '<input type="hidden" name="q" value="{1}" />'\
                         '<input type="password" name="pass" placeholder="Password" />'\
-                        '<input type="submit" value="{2}" /></form>'.format(
+                        '<input type="submit" value="{2}" /></form><br />'.format(
                             quota_setting[0], quota_setting[1], quota_setting[2]))
                     
                     registration_setting = ["Off", "1", "Enable","statGrey"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable","statRed"]
@@ -380,8 +380,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             registration_setting[2],
                             registration_setting[3]))
                     self.wfile.write(
-                        '<td><table>'\
                         '<form name="changepass" action="/admin" method="POST">'\
+                        '<td><table>'\
                         '<tr><td>Change Administrator Password:</td></tr>'\
                         '<tr><td><input type="password" name="pass" placeholder="Current Password" /></td></tr>'\
                         '<tr><td><input type="password" name="newpass" placeholder="New Password" /></td></tr>'\
@@ -534,7 +534,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         # Already deleted; probably tried to refresh.
         except TypeError:
             pass
-    
+
+class ThreadedHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
+    """Handle requests in a separate thread."""
+
 if __name__ == "__main__":
     os.chdir(".")
     CONFIG_FILE = "server.cfg"
@@ -606,10 +609,10 @@ if __name__ == "__main__":
         print("Remember to register at http://{0}:{1}/register !".format(
             HOST_IP, PORT))
     else:
-        db_connection = sqlite3.connect(DATABASE_NAME)
+        db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
         database = db_connection.cursor()
     
-    Server = BaseHTTPServer.HTTPServer((HOST_IP, PORT), RequestHandler)
+    Server = ThreadedHTTPServer(("", PORT), RequestHandler)
     print("Puush Server Started - {0}:{1}".format(HOST_IP,PORT))
     try:
         Server.serve_forever()
