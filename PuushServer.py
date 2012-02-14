@@ -31,6 +31,8 @@ import getpass
 import urllib2
 # Threading
 import SocketServer
+# Preventing printing of BaseHTTPServer log messages
+import sys
 
 def gen_api_key():
     """Returns 32 hexadecimal characters in uppercase"""
@@ -255,8 +257,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # Get file's size from file id number
                 db_data = self.select_from_db("files", "id", form["i"].value)
                 file_size = db_data[5]
-                # Remove file
-                os.remove(UPLOAD_DIR + db_data[2])
+                file_name = db_data[2]
                 # Remove file entry from database by item number
                 database.execute("DELETE FROM files WHERE id=:id", {
                     "id":form["i"].value})
@@ -269,8 +270,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 db_connection.commit()
                 self.send_response_header(200, {"Content-Type":"text/html"})
                 self.handle_history(form["k"].value)
+                # Remove file
+                os.remove(UPLOAD_DIR + file_name)
             # Nonexistent user
             except TypeError:
+                pass
+            # See self.admin_handle_delete
+            except IOError:
                 pass
 # "ERROR REPORTING"
         elif self.path == "http://puush.me/api/oshi":
@@ -519,8 +525,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             db_data = self.select_from_db("files", "url", url)
             file_size = db_data[5]
             file_owner = db_data[1]
-            # Remove file
-            os.remove(UPLOAD_DIR + db_data[2])
+            file_name = db_data[2]
             # Get owner apikey from email
             db_data = self.select_from_db("users", "email", file_owner)
             owner_apikey = db_data[3]
@@ -534,8 +539,14 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     {"file_len":file_size,
                     "apikey":owner_apikey})
             db_connection.commit()
+            # Remove file last: in case file was already somehow deleted,
+            # it would be removed from the database first before IOError
+            os.remove(UPLOAD_DIR + file_name)
         # Already deleted; probably tried to refresh.
         except TypeError:
+            pass
+        # File was deleted, but was in database.
+        except OSError:
             pass
 
 class ThreadedHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
@@ -594,9 +605,10 @@ if __name__ == "__main__":
         os.mkdir(UPLOAD_DIR, 0744)
     
     if not DATABASE_NAME:
-        print("No database name. Please add one to {0}.".format(CONFIG_FILE))
-    elif DATABASE_NAME not in os.listdir("."):
-        db_connection = sqlite3.connect(DATABASE_NAME)
+        print("No database name. Please add a value to DatabaseName in {0}.".format(CONFIG_FILE))
+        exit()
+    if DATABASE_NAME not in os.listdir("."):
+        db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
         database = db_connection.cursor()
         print("Generating database...")
         database.execute(
@@ -612,9 +624,18 @@ if __name__ == "__main__":
         print("Remember to register at http://{0}:{1}/register !".format(
             HOST_IP, PORT))
     else:
-        db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
-        database = db_connection.cursor()
+        try:
+            db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
+            database = db_connection.cursor()
+            # Making sure both tables are there
+            database.execute("SELECT * FROM users;")
+            database.execute("SELECT * FROM files;")
+        except sqlite3.OperationalError:
+            print("Invalid database file.")
+            exit()
     
+    sys.stderr = open(os.devnull, "w")
+
     Server = ThreadedHTTPServer(("", PORT), RequestHandler)
     print("Puush Server Started - {0}:{1}".format(HOST_IP,PORT))
     try:
