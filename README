@@ -22,5 +22,5 @@ Configuration
 	- If Windows, add the following to %appdata%\puush\puush.ini:
 		- ProxyServer = ip or hostname
 		- ProxyPort = PORT
-	- Start server with "python PuushServer.py" in GNU screen or however.
+	- Start server using screen, nohup, or &.
 	- Visit http://HOST:PORT/ for web-accessible pages

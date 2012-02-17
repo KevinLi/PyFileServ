@@ -173,7 +173,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 '.statRed {background-color: #FF0000; font-weight: bold; text-align: center;}'\
                 '.statGrey {background-color: #C0C0C0; font-weight: bold; text-align: center;}'\
                 '#main {text-align: center; padding: 10px;}'\
-                '.s {text-align: right;}'
+                '.s {text-align: right;}'\
+                'footer {text-decoration: none; color: B0B0B0; position: fixed; bottom: 0px; right: 0px;}'
             )
         # Easter egg!
         elif self.path == "/418":
@@ -339,6 +340,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         if form["pass"].value == ADMIN_PASS:
                             ADMIN_PASS = form["newpass"].value
                             config.set("Server", "AdminPass", form["newpass"].value)
+                    elif "reload" in form.keys():
+                        load_config()
                     database.execute("SELECT * FROM files;")
                     self.wfile.write(
                         '<!doctype html><html><head>'\
@@ -395,8 +398,18 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<tr><td><input type="password" name="pass" placeholder="Current Password" /></td></tr>'\
                         '<tr><td><input type="password" name="newpass" placeholder="New Password" /></td></tr>'\
                         '<tr><td><input type="submit" value="Change" /></td></tr>'\
-                        '</table></form></td></tr></table>')
-                    self.wfile.write("</body></html>")
+                        '</table></form>')
+                    self.wfile.write(
+                        '<form name="reload" action="/admin" method="POST">'\
+                        '<table>'\
+                        '<tr><td>Reload Config from file:</tr></td>'\
+                        '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
+                        '<tr><td><input type="submit" name="reload" value="Reload Config" /></td></tr>'\
+                        '</table></td></tr></table>'
+                        )
+                    self.wfile.write(
+                        # '<footer><a href="nope">testfooter</a></footer>'\
+                        '</body></html>')
                 else:
                     self.send_response_header(403, {"Content-Type":"text/plain"})
                     self.wfile.write("Unauthorised")
@@ -552,6 +565,22 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class ThreadedHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     """Handle requests in a separate thread."""
 
+def load_config():
+    global HOST_IP, PORT, PASSWORD_SALT, DATABASE_NAME, ADMIN_PASS, ENABLE_REGISTRATION
+    global UPLOAD_DIR, PROGRAM_VERSION, UPLOAD_URL, QUOTA, AUTOUPDATE
+    config.read(CONFIG_FILE)
+    HOST_IP = config.get("Server", "IP")
+    PORT = int(config.get("Server", "Port"))
+    PASSWORD_SALT = config.get("Server", "PasswordSalt")
+    DATABASE_NAME = config.get("Server", "DatabaseName")
+    ADMIN_PASS = config.get("Server", "AdminPass")
+    ENABLE_REGISTRATION = bool(int(config.get("Server", "EnableRegistration")))
+    UPLOAD_DIR = config.get("Server", "UploadDir")
+    PROGRAM_VERSION = config.get("Server", "ProgVer")
+    UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
+    QUOTA = int(config.get("Server", "Quota"))
+    AUTOUPDATE = bool(int(config.get("Server","AutoUpdate")))
+
 if __name__ == "__main__":
     os.chdir(".")
     CONFIG_FILE = "server.cfg"
@@ -579,18 +608,7 @@ if __name__ == "__main__":
         else:
             exit()
     try:
-        config.read(CONFIG_FILE)
-        HOST_IP = config.get("Server", "IP")
-        PORT = int(config.get("Server", "Port"))
-        PASSWORD_SALT = config.get("Server", "PasswordSalt")
-        DATABASE_NAME = config.get("Server", "DatabaseName")
-        ADMIN_PASS = config.get("Server", "AdminPass")
-        ENABLE_REGISTRATION = bool(int(config.get("Server", "EnableRegistration")))
-        UPLOAD_DIR = config.get("Server", "UploadDir")
-        PROGRAM_VERSION = config.get("Server", "ProgVer")
-        UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
-        QUOTA = int(config.get("Server", "Quota"))
-        AUTOUPDATE = bool(int(config.get("Server","AutoUpdate")))
+        load_config()
     except ConfigParser.NoOptionError, e:
         print("One or more options are missing/invalid:")
         print(e)
