@@ -402,10 +402,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.wfile.write(
                         '<form name="reload" action="/admin" method="POST">'\
                         '<table>'\
-                        '<tr><td>Reload Config from file:</tr></td>'\
+                        '<tr><td>Reload Config from file:</td></tr>'\
                         '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
                         '<tr><td><input type="submit" name="reload" value="Reload Config" /></td></tr>'\
-                        '</table></td></tr></table>'
+                        '</table></form></td></tr></table>'
                         )
                     self.wfile.write(
                         # '<footer><a href="nope">testfooter</a></footer>'\
