@@ -7,6 +7,7 @@ Todo:
     Gzip data? Plain text seems fine though.
 """
 
+import sys
 # HTTP Server
 import BaseHTTPServer
 # Database
@@ -31,8 +32,8 @@ import getpass
 import urllib2
 # Threading
 import SocketServer
-# Preventing printing of BaseHTTPServer log messages
-import sys
+# JSON
+import json
 
 def gen_api_key():
     """Returns 32 hexadecimal characters in uppercase"""
@@ -40,17 +41,17 @@ def gen_api_key():
         [str(time.time() + random.random()) for x in xrange(5)]
     )
     return hashlib.md5(rand_str).hexdigest().upper()
-        
+
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def hash_pass(self, password):
         """Returns a hashed and salted string from input"""
         return hashlib.md5(PASSWORD_SALT + password).hexdigest()
-        
+
     def gen_filename(self):
-        file = "".join(random.choice(
+        filename = "".join(random.choice(
             string.ascii_letters + string.digits) for x in range(4))
-        if self.filename_check(file) == file:
-            return file
+        if self.filename_check(filename) == filename:
+            return filename
         else:
             self.gen_filename()
     def filename_check(self, filename):
@@ -58,7 +59,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.gen_filename()
         else:
             return filename
-            
+
     def detect_mimetype(self, filename):
         filetype = mimetypes.guess_type(filename, strict=True)[0]
         if filetype == None:
@@ -71,18 +72,18 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         database.execute("SELECT * FROM {0} WHERE {1} = :{1};".format(
             table, item), {item:value})
         return database.fetchone()
-        
+
     def send_response_header(self, code, headers):
         """Sends headers to the client program"""
         self.send_response(code)
         for header in headers:
             self.send_header(header, headers[header])
         self.end_headers()
-        
+
     def do_HEAD(self):
         self.send_response_header(200, {})
     def do_GET(self):
-        global AUTOUPDATE, PROGRAM_VERSION
+        global AUTOUPDATE, PROGRAM_VERSION, ENABLE_API
 # FILE RETRIEVAL
         if re.search("\/[A-Za-z0-9]{4}$", self.path):
             try:
@@ -107,11 +108,15 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "http://puush.me/dl/puush-win.txt?check=true":
             self.send_response_header(200, {"Content-Type":"text/plain"})
             if AUTOUPDATE == True:
-                version = urllib2.urlopen(self.path).read()
+                try:
+                    version = urllib2.urlopen(self.path).read()
+                # Timeouts, connection errors
+                except urllib2.URLError:
+                    version = PROGRAM_VERSION
                 self.wfile.write(version)
                 PROGRAM_VERSION = version
             else:
-                self.wfile.write(PROGRAM_VERSION+"\n")
+                self.wfile.write(PROGRAM_VERSION + "\n")
 # REGISTRATION
         elif self.path == "/register":
             # HTML because registration form
@@ -193,6 +198,24 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 '<tr><td><input type="text" name="email" placeholder="Email" /></td></tr>'\
                 '<tr><td><input type="password" name="p" placeholder="Password" /><input type="submit" value="Upload" /></td></tr>'\
                 '</table></form></body></html>')
+# JSON DATA
+        elif re.search("\/api\?file\=[A-Za-z0-9]{4}$", self.path):
+            if ENABLE_API:
+                db_data = self.select_from_db("files", "url", self.path[-4:])
+                js_data = {
+                    "mimetype":db_data[3],
+                    "filename":db_data[4],
+                    "views":db_data[6],
+                    "timestamp":db_data[7]
+                }
+                self.send_response_header(200, {"Content-Type":"application/json"})
+                self.wfile.write(
+                    json.dumps(js_data, sort_keys=True, indent=2)
+                )
+            else:
+                self.send_response_header(200, {"Content-Type":"application/json"})
+                self.wfile.write("{}")
+
 # UPDATE
         elif self.path == "http://puush.me/dl/puush-win.zip" or self.path == "http://puush.me/dl/puush.zip":
             update = urllib2.urlopen(self.path).read()
@@ -201,9 +224,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.send_response_header(404, {"Content-Type":"text/plain"})
             self.wfile.write("404")
-    
+
     def do_POST(self):
-        global QUOTA, ENABLE_REGISTRATION, ADMIN_PASS, HOST_IP, PORT
+        global QUOTA, ENABLE_REGISTRATION, ENABLE_API, ADMIN_PASS, HOST_IP, PORT
 # HISTORY
         if self.path == "http://puush.me/api/hist":
             self.send_response_header(200, {"Content-Type":"text/html"})
@@ -225,7 +248,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             db_data = self.select_from_db("users", "email", userinfo["email"])
             try:
                 if db_data[1] == userinfo["email"] and (
-                        db_data[2] == self.hash_pass(userinfo["password"]) or 
+                        db_data[2] == self.hash_pass(userinfo["password"]) or
                         db_data[3] == userinfo["key"]):
                     userinfo["key"] = db_data[3]
                     userinfo["usage"] = db_data[4]
@@ -336,6 +359,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     elif "r" in form.keys():
                         ENABLE_REGISTRATION = bool(int(form["r"].value))
                         config.set("Server", "EnableRegistration", form["r"].value)
+                    elif "a" in form.keys():
+                        ENABLE_API = bool(int(form["a"].value))
+                        config.set("Server", "EnableAPI", form["a"].value)
                     elif "pass" in form.keys() and "newpass" in form.keys():
                         if form["pass"].value == ADMIN_PASS:
                             ADMIN_PASS = form["newpass"].value
@@ -368,37 +394,47 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<tr><td><input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="Delete" />'\
                         '</td><td></td><td></td><td></td><td></td><td></td><td></td>'\
-                        '</tr></tbody></table></form><br />')
-                    
+                        '</tr></tbody></table></form><br /><table><tr><td>')
+
                     quota_setting = ["On", "1", "Disable"] if QUOTA == 0 else ["Off", "0", "Enable"]
                     self.wfile.write(
-                        '<table><tr><td>'\
                         '<form name="quota" action="/admin" method="POST">'\
                         'Quota: <div class="statGrey">{0}</div>'\
                         '<input type="hidden" name="q" value="{1}" />'\
                         '<input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
                             quota_setting[0], quota_setting[1], quota_setting[2]))
-                    
-                    registration_setting = ["Off", "1", "Enable","statGrey"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable","statRed"]
+
+                    registration_setting = ["Off", "1", "Enable", "statGrey"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable", "statRed"]
                     self.wfile.write(
                         '<form name="registration" action="/admin" method="POST">'\
                         'Registration: <div class="{3}">{0}</div>'\
                         '<input type="hidden" name="r" value="{1}" />'\
                         '<input type="password" name="pass" placeholder="Password" />'\
-                        '<input type="submit" value="{2}" /></form></td>'.format(
+                        '<input type="submit" value="{2}" /></form>'.format(
                             registration_setting[0],
                             registration_setting[1],
                             registration_setting[2],
                             registration_setting[3]))
+                    api_setting = ["Off", "1", "Enable", "statGrey"] if ENABLE_API == False else ["On", "0", "Disable", "statGrey"]
                     self.wfile.write(
-                        '<td><form name="changepass" action="/admin" method="POST">'\
+                        '<form name="api" action="/admin" method="POST">'\
+                        'API: <div class="{3}">{0}</div>'\
+                        '<input type="hidden" name="a" value="{1}" />'\
+                        '<input type="password" name="pass" placeholder="Password" />'\
+                        '<input type="submit" value="{2}" /></form>'.format(
+                            api_setting[0],
+                            api_setting[1],
+                            api_setting[2],
+                            api_setting[3]))
+                    self.wfile.write(
+                        '</td><td><form name="changepass" action="/admin" method="POST">'\
                         '<table>'\
                         '<tr><td>Change Administrator Password:</td></tr>'\
                         '<tr><td><input type="password" name="pass" placeholder="Current Password" /></td></tr>'\
                         '<tr><td><input type="password" name="newpass" placeholder="New Password" /></td></tr>'\
                         '<tr><td><input type="submit" value="Change" /></td></tr>'\
-                        '</table></form>')
+                        '</table></form><br />')
                     self.wfile.write(
                         '<form name="reload" action="/admin" method="POST">'\
                         '<table>'\
@@ -420,8 +456,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={
                 "REQUEST_METHOD":"POST",
                 "CONTENT_TYPE":self.headers["Content-Type"]})
-            userkey = form["k"].value
-            imagenum = form["i"].value
+            # userkey = form["k"].value
+            # imagenum = form["i"].value
             self.send_response_header(200, {"Content-Type":"image/png"})
             # Probably won't implement this.
 
@@ -433,35 +469,39 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             try:
                 db_data = self.select_from_db("users", "email", form["email"].value)
                 if str(db_data[2]) == self.hash_pass(form["p"].value):
-                    new_filename = self.gen_filename()
-                    with open(UPLOAD_DIR + new_filename, "wb") as new_file:
-                        new_file.write(form["f"].value)
-                    file_length = len(form["f"].value)
-                    database.execute(
-                        "UPDATE users SET usage=usage+:file_len WHERE email=:email;",
-                            {"file_len":file_length,
-                            "email":form["email"].value})
-                    db_connection.commit()
-                    database.execute(
-                        "INSERT INTO files VALUES "\
-                        "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
-                            "owner":db_data[1],
-                            "url":new_filename,
-                            "mimetype":self.detect_mimetype(form["f"].filename),
-                            "filename":form["f"].filename,
-                            "size":file_length,
-                            "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
-                    db_connection.commit()
-                    database.execute("SELECT * FROM files WHERE url=:url;", {
-                        "url":new_filename})
-                    self.send_response_header(200, {"Content-Type":"text/html"})
-                    self.wfile.write(
-                        '<!doctype html><html><head>'\
-                        '<meta charset=utf-8 /><title>Web Upload</title>'\
-                        '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                        '</head><body>'\
-                        '<a href="{0}{1}">{0}{1}</a></body></html>'.format(
-                            UPLOAD_URL,new_filename))
+                    if db_data[4] + len(form["f"].value) <= 209715200:
+                        new_filename = self.gen_filename()
+                        with open(UPLOAD_DIR + new_filename, "wb") as new_file:
+                            new_file.write(form["f"].value)
+                        file_length = len(form["f"].value)
+                        database.execute(
+                            "UPDATE users SET usage=usage+:file_len WHERE email=:email;",
+                                {"file_len":file_length,
+                                "email":form["email"].value})
+                        db_connection.commit()
+                        database.execute(
+                            "INSERT INTO files VALUES "\
+                            "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
+                                "owner":db_data[1],
+                                "url":new_filename,
+                                "mimetype":self.detect_mimetype(form["f"].filename),
+                                "filename":form["f"].filename,
+                                "size":file_length,
+                                "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
+                        db_connection.commit()
+                        database.execute("SELECT * FROM files WHERE url=:url;", {
+                            "url":new_filename})
+                        self.send_response_header(200, {"Content-Type":"text/html"})
+                        self.wfile.write(
+                            '<!doctype html><html><head>'\
+                            '<meta charset=utf-8 /><title>Web Upload</title>'\
+                            '<link rel="stylesheet" type="text/css" href="style.css" />'\
+                            '</head><body>'\
+                            '<a href="{0}{1}">{0}{1}</a></body></html>'.format(
+                                UPLOAD_URL, new_filename))
+                    else:
+                        self.send_response_header(507, {"Content-Type":"text/plain"})
+                        self.wfile.write("Quota exceeded.")
                 else:
                     self.send_response_header(403, {"Content-Type":"text/html"})
                     self.wfile.write("Incorrect password")
@@ -472,7 +512,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 print(e)
                 self.send_response_header(403, {"Content-Type":"text/html"})
                 self.wfile.write("Invalid email")
-    
+
     def handle_upload(self):
         """Receives data, authenticates, writes file to disk and database"""
         form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={
@@ -486,28 +526,31 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         form_data_file = form["f"].value
         db_data = self.select_from_db("users", "apikey", form_data_key)
         if db_data[3] == form_data_key:
-            new_filename = self.gen_filename()
-            with open(UPLOAD_DIR + new_filename, "wb") as new_file:
-                new_file.write(form_data_file)
-            file_length = len(form_data_file)
-            database.execute(
-                "UPDATE users SET usage=usage+:file_len WHERE apikey=:apikey;",
-                    {"file_len":file_length,
-                    "apikey":form_data_key})
-            db_connection.commit()
-            database.execute(
-                "INSERT INTO files VALUES "\
-                "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
-                    "owner":db_data[1],
-                    "url":new_filename,
-                    "mimetype":self.detect_mimetype(form["f"].filename),
-                    "filename":form["f"].filename,
-                    "size":file_length,
-                    "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
-            db_connection.commit()
-            database.execute("SELECT * FROM files WHERE url=:url;", {
-                "url":new_filename})
-            return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
+            if db_data[4] + len(form_data_file) <= 209715200:
+                new_filename = self.gen_filename()
+                with open(UPLOAD_DIR + new_filename, "wb") as new_file:
+                    new_file.write(form_data_file)
+                file_length = len(form_data_file)
+                database.execute(
+                    "UPDATE users SET usage=usage+:file_len WHERE apikey=:apikey;",
+                        {"file_len":file_length,
+                        "apikey":form_data_key})
+                db_connection.commit()
+                database.execute(
+                    "INSERT INTO files VALUES "\
+                    "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
+                        "owner":db_data[1],
+                        "url":new_filename,
+                        "mimetype":self.detect_mimetype(form["f"].filename),
+                        "filename":form["f"].filename,
+                        "size":file_length,
+                        "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
+                db_connection.commit()
+                database.execute("SELECT * FROM files WHERE url=:url;", {
+                    "url":new_filename})
+                return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
+            else:
+                return "Quota exceeded!", 0, 0
     def handle_history(self, apikey):
         db_data = self.select_from_db("users", "apikey", apikey)
         database.execute("SELECT * FROM files WHERE owner=:owner;", {
@@ -567,7 +610,7 @@ class ThreadedHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer)
 
 def load_config():
     global HOST_IP, PORT, PASSWORD_SALT, DATABASE_NAME, ADMIN_PASS, ENABLE_REGISTRATION
-    global UPLOAD_DIR, PROGRAM_VERSION, UPLOAD_URL, QUOTA, AUTOUPDATE
+    global UPLOAD_DIR, PROGRAM_VERSION, UPLOAD_URL, QUOTA, AUTOUPDATE, ENABLE_API
     config.read(CONFIG_FILE)
     HOST_IP = config.get("Server", "IP")
     PORT = int(config.get("Server", "Port"))
@@ -575,11 +618,12 @@ def load_config():
     DATABASE_NAME = config.get("Server", "DatabaseName")
     ADMIN_PASS = config.get("Server", "AdminPass")
     ENABLE_REGISTRATION = bool(int(config.get("Server", "EnableRegistration")))
+    ENABLE_API = bool(int(config.get("Server", "EnableAPI")))
     UPLOAD_DIR = config.get("Server", "UploadDir")
     PROGRAM_VERSION = config.get("Server", "ProgVer")
     UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
     QUOTA = int(config.get("Server", "Quota"))
-    AUTOUPDATE = bool(int(config.get("Server","AutoUpdate")))
+    AUTOUPDATE = bool(int(config.get("Server", "AutoUpdate")))
 
 if __name__ == "__main__":
     os.chdir(".")
@@ -597,6 +641,7 @@ if __name__ == "__main__":
             config.set("Server", "AdminPass",
                 getpass.getpass("Admin password (Blank to disable): "))
             config.set("Server", "EnableRegistration", 1)
+            config.set("Server", "EnableAPI", 1)
             config.set("Server", "Quota",
                 raw_input("Enable quota? (200MB) [1/0]: "))
             config.set("Server", "UploadDir", "Uploads/")
@@ -606,25 +651,25 @@ if __name__ == "__main__":
                 config.write(configfile)
             print("Configuration file saved as {0}.".format(CONFIG_FILE))
         else:
-            exit()
+            sys.exit()
     try:
         load_config()
     except ConfigParser.NoOptionError, e:
         print("One or more options are missing/invalid:")
         print(e)
-        exit()
+        sys.exit()
     except ValueError, e:
         print("One or more options are invalid:")
         print(e)
-        exit()
-    
+        sys.exit()
+
     if UPLOAD_DIR[:-1] not in os.listdir("."):
         print("Creating upload directory...")
         os.mkdir(UPLOAD_DIR, 0744)
-    
+
     if not DATABASE_NAME:
         print("No database name. Please add a value to DatabaseName in {0}.".format(CONFIG_FILE))
-        exit()
+        sys.exit()
     if DATABASE_NAME not in os.listdir("."):
         db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
         database = db_connection.cursor()
@@ -650,12 +695,12 @@ if __name__ == "__main__":
             database.execute("SELECT * FROM files;")
         except sqlite3.OperationalError:
             print("Invalid database file.")
-            exit()
-    
-    sys.stderr = open(os.devnull, "w")
+            sys.exit()
 
     Server = ThreadedHTTPServer(("", PORT), RequestHandler)
-    print("Puush Server Started - {0}:{1}".format(HOST_IP,PORT))
+    print("PyPuush Started - {0}:{1}".format(HOST_IP, PORT))
+    sys.stderr = open(os.devnull, "w")
+    sys.stdout = open(os.devnull, "w")
     try:
         Server.serve_forever()
     except KeyboardInterrupt:
@@ -665,3 +710,4 @@ if __name__ == "__main__":
         Server.server_close()
         database.close()
         print("Server Stopped.")
+        sys.exit(0)

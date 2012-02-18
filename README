@@ -1,4 +1,4 @@
-Puush Server
+PyPuush
 A Puush Server. In Python.
 
 This script allows you to save and manage files captured with puush to your own server.
@@ -24,3 +24,6 @@ Configuration
 		- ProxyPort = PORT
 	- Start server using screen, nohup, or &.
 	- Visit http://HOST:PORT/ for web-accessible pages
+
+Notes
+	- JSON data of a file can be accessed at http://HOST:PORT/api?file=filename
