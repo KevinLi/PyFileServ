@@ -79,6 +79,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for header in headers:
             self.send_header(header, headers[header])
         self.end_headers()
+    def send_html_head(self, title):
+        self.wfile.write(
+            '<!doctype html><html><head>'\
+            '<meta charset=utf-8 /><title>{0}</title>'\
+            '<link rel="stylesheet" type="text/css" href="style.css" />'\
+            '</head><body>'.format(title))
 
     def do_HEAD(self):
         self.send_response_header(200, {})
@@ -121,11 +127,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/register":
             # HTML because registration form
             self.send_response_header(200, {"Content-Type":"text/html"})
-            self.wfile.write(
-                '<!doctype html><html><head>'\
-                '<meta charset=utf-8 /><title>Registration</title>'\
-                '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                '</head><body>')
+            self.send_html_head("Registration")
             if ENABLE_REGISTRATION == True:
                 self.wfile.write(
                     '<form action="/register" method="POST">'\
@@ -145,11 +147,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 # MAIN PAGE
         elif self.path == "/":
             self.send_response_header(200, {"Content-Type":"text/html"})
+            self.send_html_head("Main")
             self.wfile.write(
-                '<!doctype html><html><head>'\
-                '<meta charset=utf-8 /><title>Hi</title>'\
-                '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                '</head><body><br /><br /><div id="main">'\
+                '<br /><br /><div id="main">'\
                 '<a href="./upload">Web Upload</a><br /><br />'\
                 '<a href="./register">Register</a><br /><br />'\
                 '<a href="./admin">Admin Page</a></div>'\
@@ -157,11 +157,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 # ADMINISTRATION
         elif self.path == "/admin":
             self.send_response_header(200, {"Content-Type":"text/html"})
+            self.send_html_head("Administration")
             self.wfile.write(
-                '<!doctype html><html><head>'\
-                '<meta charset=utf-8 /><title>Authentication</title>'\
-                '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                '</head><body>'\
                 '<form action="/admin" method="post"><table>'\
                 '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
                 '<tr><td><input type="submit" value="&quot;Login&quot;" /></td></tr>'\
@@ -188,11 +185,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 # WEB UPLOAD
         elif self.path == "/upload":
             self.send_response_header(200, {"Content-Type":"text/html"})
+            self.send_html_head("Web Upload")
             self.wfile.write(
-                '<!doctype html><html><head>'\
-                '<meta charset=utf-8 /><title>Web Upload</title>'\
-                '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                '</head><body>'\
                 '<form action="/upload" method="post" enctype="multipart/form-data"><table>'\
                 '<tr><td><input type="file" name="f" /></td></tr>'\
                 '<tr><td><input type="text" name="email" placeholder="Email" /></td></tr>'\
@@ -316,20 +310,33 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                     environ={"REQUEST_METHOD":"POST",
                         "CONTENT_TYPE":self.headers["Content-Type"]})
-                if (re.search(".+@.+\..+", form["email"].value)
+                db_data = database.execute("SELECT * FROM USERS;")
+                email_exists = False
+                for row in db_data:
+                    if form["email"].value == row[1]:
+                        email_exists = True
+                if email_exists == True:
+                    self.send_response_header(200, {"Content-Type":"text/html"})
+                    self.send_html_head("Registration")
+                    self.wfile.write(
+                        "That email has been registered with. Please use a different email address.")
+                elif (re.search(".+@.+\..+", form["email"].value)
                      and len(form["pass"].value) >= 5
                      and form["pass"].value == form["passc"].value
                    ):
+                    user_key = gen_api_key()
                     database.execute(
                         "INSERT INTO users VALUES (NULL, :email, :pass, :apikey, 0);", {
                             "email":form["email"].value,
                             "pass":self.hash_pass(form["pass"].value),
-                            "apikey":gen_api_key()})
+                            "apikey":user_key})
                     db_connection.commit()
-                    self.send_response_header(200, {"Content-Type":"text/plain"})
+                    self.send_response_header(200, {"Content-Type":"text/html"})
+                    self.send_html_head("Registration")
                     self.wfile.write(
-                        "Registered! "\
-                        "You may now log in with your email and password.")
+                        'Registered!<br />'\
+                        'You may now log in with your email and password.<br />'\
+                        'Your user API key is {0}</body></html>'.format(user_key))
                 else:
                     self.send_response_header(200, {"Content-Type":"text/plain"})
                     self.wfile.write(
@@ -369,11 +376,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     elif "reload" in form.keys():
                         load_config()
                     database.execute("SELECT * FROM files;")
+                    self.send_html_head("Administration")
                     self.wfile.write(
-                        '<!doctype html><html><head>'\
-                        '<meta charset=utf-8 /><title>Administration</title>'\
-                        '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                        '</head><body><form name="delete" action="/admin" method="POST">'\
+                        '<form name="delete" action="/admin" method="POST">'\
                         '<table><thead><tr>'\
                         '<th class="n">Name</th><th class="v">Views</th>'\
                         '<th class="ts">Timestamp (Server Time)</th><th class="o">Owner</th>'\
@@ -419,7 +424,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     api_setting = ["Off", "1", "Enable", "statGrey"] if ENABLE_API == False else ["On", "0", "Disable", "statGrey"]
                     self.wfile.write(
                         '<form name="api" action="/admin" method="POST">'\
-                        'API: <div class="{3}">{0}</div>'\
+                        'Web API: <div class="{3}">{0}</div>'\
                         '<input type="hidden" name="a" value="{1}" />'\
                         '<input type="password" name="pass" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
@@ -492,11 +497,8 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         database.execute("SELECT * FROM files WHERE url=:url;", {
                             "url":new_filename})
                         self.send_response_header(200, {"Content-Type":"text/html"})
+                        self.send_html_head("Web Upload")
                         self.wfile.write(
-                            '<!doctype html><html><head>'\
-                            '<meta charset=utf-8 /><title>Web Upload</title>'\
-                            '<link rel="stylesheet" type="text/css" href="style.css" />'\
-                            '</head><body>'\
                             '<a href="{0}{1}">{0}{1}</a></body></html>'.format(
                                 UPLOAD_URL, new_filename))
                     else:
@@ -613,45 +615,43 @@ def load_config():
     global UPLOAD_DIR, PROGRAM_VERSION, UPLOAD_URL, QUOTA, AUTOUPDATE, ENABLE_API
     config.read(CONFIG_FILE)
     HOST_IP = config.get("Server", "IP")
-    PORT = int(config.get("Server", "Port"))
+    PORT = config.getint("Server", "Port")
     PASSWORD_SALT = config.get("Server", "PasswordSalt")
     DATABASE_NAME = config.get("Server", "DatabaseName")
     ADMIN_PASS = config.get("Server", "AdminPass")
-    ENABLE_REGISTRATION = bool(int(config.get("Server", "EnableRegistration")))
-    ENABLE_API = bool(int(config.get("Server", "EnableAPI")))
+    ENABLE_REGISTRATION = config.getboolean("Server", "EnableRegistration")
+    ENABLE_API = config.getboolean("Server", "EnableAPI")
     UPLOAD_DIR = config.get("Server", "UploadDir")
     PROGRAM_VERSION = config.get("Server", "ProgVer")
     UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
-    QUOTA = int(config.get("Server", "Quota"))
-    AUTOUPDATE = bool(int(config.get("Server", "AutoUpdate")))
+    QUOTA = config.getint("Server", "Quota")
+    AUTOUPDATE = config.getboolean("Server", "AutoUpdate")
 
 if __name__ == "__main__":
     os.chdir(".")
     CONFIG_FILE = "server.cfg"
     config = ConfigParser.RawConfigParser()
     if CONFIG_FILE not in os.listdir("."):
-        if raw_input("No config file present. Make one now? [y/n]: ") == "y":
-            config.add_section("Server")
-            config.set("Server", "IP",
-                raw_input("IP address or domain name: "))
-            config.set("Server", "Port", raw_input("Port: "))
-            config.set("Server", "PasswordSalt", gen_api_key())
-            config.set("Server", "DatabaseName",
-                raw_input("Database Name (ex: puushdata.sqlite): "))
-            config.set("Server", "AdminPass",
-                getpass.getpass("Admin password (Blank to disable): "))
-            config.set("Server", "EnableRegistration", 1)
-            config.set("Server", "EnableAPI", 1)
-            config.set("Server", "Quota",
-                raw_input("Enable quota? (200MB) [1/0]: "))
-            config.set("Server", "UploadDir", "Uploads/")
-            config.set("Server", "ProgVer", "83")
-            config.set("Server", "AutoUpdate", "1")
-            with open(CONFIG_FILE, "wb") as configfile:
-                config.write(configfile)
-            print("Configuration file saved as {0}.".format(CONFIG_FILE))
-        else:
-            sys.exit()
+        print("No config file present. Setup:")
+        config.add_section("Server")
+        config.set("Server", "IP",
+            raw_input("IP address or domain name: "))
+        config.set("Server", "Port", raw_input("Port: "))
+        config.set("Server", "PasswordSalt", gen_api_key() + gen_api_key())
+        config.set("Server", "DatabaseName",
+            raw_input("Database Name (ex: puushdata.sqlite): "))
+        config.set("Server", "AdminPass",
+            getpass.getpass("Admin password (Blank to disable): "))
+        config.set("Server", "EnableRegistration", "1")
+        config.set("Server", "EnableAPI", "1")
+        config.set("Server", "Quota",
+            raw_input("Enable quota? (200MB) [1/0]: "))
+        config.set("Server", "UploadDir", "Uploads/")
+        config.set("Server", "ProgVer", "83")
+        config.set("Server", "AutoUpdate", "1")
+        with open(CONFIG_FILE, "wb") as configfile:
+            config.write(configfile)
+        print("Configuration file saved as {0}.".format(CONFIG_FILE))
     try:
         load_config()
     except ConfigParser.NoOptionError, e:
@@ -668,11 +668,11 @@ if __name__ == "__main__":
         os.mkdir(UPLOAD_DIR, 0744)
 
     if not DATABASE_NAME:
-        print("No database name. Please add a value to DatabaseName in {0}.".format(CONFIG_FILE))
+        print("No database name found. Please add a value to DatabaseName in {0}.".format(CONFIG_FILE))
         sys.exit()
+    db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
+    database = db_connection.cursor()
     if DATABASE_NAME not in os.listdir("."):
-        db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
-        database = db_connection.cursor()
         print("Generating database...")
         database.execute(
             "CREATE TABLE users (id INTEGER PRIMARY KEY, "\
@@ -684,12 +684,8 @@ if __name__ == "__main__":
             "owner TEXT, url TEXT, mimetype TEXT, "\
             "filename TEXT, size INTEGER, views INTEGER, timestamp TEXT);")
         db_connection.commit()
-        print("Remember to register at http://{0}:{1}/register !".format(
-            HOST_IP, PORT))
     else:
         try:
-            db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
-            database = db_connection.cursor()
             # Making sure both tables are there
             database.execute("SELECT * FROM users;")
             database.execute("SELECT * FROM files;")
