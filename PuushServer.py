@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-"""
-
-Known bugs: 
-    Crashes on cancellation of upload (Client program's fault?)
-Todo: 
-    Gzip data? Plain text seems fine though.
-"""
 
 import sys
 # HTTP Server
@@ -42,39 +35,43 @@ def gen_api_key():
     )
     return hashlib.md5(rand_str).hexdigest().upper()
 
+def hash_pass(password):
+    """Returns a hashed and salted string from input"""
+    return hashlib.md5(PASSWORD_SALT + password).hexdigest()
+
+characters = string.ascii_letters + string.digits
+
+def gen_filename():
+    filename = "".join(random.choice(characters) for x in xrange(4))
+    if filename_exists(filename) == filename:
+        return filename
+    else:
+        gen_filename()
+def filename_exists(filename):
+    if filename in os.listdir(UPLOAD_DIR):
+        return gen_filename()
+    else:
+        return filename
+
+def detect_mimetype(filename):
+    filetype = mimetypes.guess_type(filename, strict=True)
+    if filetype[1] != None:
+        return filetype[1]
+    elif filetype[0] != None:
+        return filetype[0]
+    else:
+        return "text/plain"
+
 class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    def hash_pass(self, password):
-        """Returns a hashed and salted string from input"""
-        return hashlib.md5(PASSWORD_SALT + password).hexdigest()
-
-    def gen_filename(self):
-        filename = "".join(random.choice(
-            string.ascii_letters + string.digits) for x in range(4))
-        if self.filename_check(filename) == filename:
-            return filename
-        else:
-            self.gen_filename()
-    def filename_check(self, filename):
-        if filename in os.listdir(UPLOAD_DIR):
-            return self.gen_filename()
-        else:
-            return filename
-
-    def detect_mimetype(self, filename):
-        filetype = mimetypes.guess_type(filename, strict=True)[0]
-        if filetype == None:
-            return "text/plain"
-        else:
-            return filetype
 
     def select_from_db(self, table, item, value):
-        """Gets data from database"""
+        """Gets data from database. Use this only if it's to return one object"""
         database.execute("SELECT * FROM {0} WHERE {1} = :{1};".format(
             table, item), {item:value})
         return database.fetchone()
 
     def send_response_header(self, code, headers):
-        """Sends headers to the client program"""
+        """Sends headers to the client"""
         self.send_response(code)
         for header in headers:
             self.send_header(header, headers[header])
@@ -178,10 +175,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 '.s {text-align: right;}'\
                 'footer {text-decoration: none; color: B0B0B0; position: fixed; bottom: 0px; right: 0px;}'
             )
-        # Easter egg!
-        elif self.path == "/418":
-            self.send_response_header(418, {"Content-Type":"text/plain"})
-            self.wfile.write("418 I'm a teapot")
 # WEB UPLOAD
         elif self.path == "/upload":
             self.send_response_header(200, {"Content-Type":"text/html"})
@@ -242,7 +235,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             db_data = self.select_from_db("users", "email", userinfo["email"])
             try:
                 if db_data[1] == userinfo["email"] and (
-                        db_data[2] == self.hash_pass(userinfo["password"]) or
+                        db_data[2] == hash_pass(userinfo["password"]) or
                         db_data[3] == userinfo["key"]):
                     userinfo["key"] = db_data[3]
                     userinfo["usage"] = db_data[4]
@@ -328,7 +321,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     database.execute(
                         "INSERT INTO users VALUES (NULL, :email, :pass, :apikey, 0);", {
                             "email":form["email"].value,
-                            "pass":self.hash_pass(form["pass"].value),
+                            "pass":hash_pass(form["pass"].value),
                             "apikey":user_key})
                     db_connection.commit()
                     self.send_response_header(200, {"Content-Type":"text/html"})
@@ -473,9 +466,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 "CONTENT_TYPE":self.headers["Content-Type"]})
             try:
                 db_data = self.select_from_db("users", "email", form["email"].value)
-                if str(db_data[2]) == self.hash_pass(form["p"].value):
+                if str(db_data[2]) == hash_pass(form["p"].value):
                     if db_data[4] + len(form["f"].value) <= 209715200:
-                        new_filename = self.gen_filename()
+                        new_filename = gen_filename()
                         with open(UPLOAD_DIR + new_filename, "wb") as new_file:
                             new_file.write(form["f"].value)
                         file_length = len(form["f"].value)
@@ -489,7 +482,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
                                 "owner":db_data[1],
                                 "url":new_filename,
-                                "mimetype":self.detect_mimetype(form["f"].filename),
+                                "mimetype":detect_mimetype(form["f"].filename),
                                 "filename":form["f"].filename,
                                 "size":file_length,
                                 "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
@@ -529,7 +522,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         db_data = self.select_from_db("users", "apikey", form_data_key)
         if db_data[3] == form_data_key:
             if db_data[4] + len(form_data_file) <= 209715200:
-                new_filename = self.gen_filename()
+                new_filename = gen_filename()
                 with open(UPLOAD_DIR + new_filename, "wb") as new_file:
                     new_file.write(form_data_file)
                 file_length = len(form_data_file)
@@ -543,7 +536,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
                         "owner":db_data[1],
                         "url":new_filename,
-                        "mimetype":self.detect_mimetype(form["f"].filename),
+                        "mimetype":detect_mimetype(form["f"].filename),
                         "filename":form["f"].filename,
                         "size":file_length,
                         "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
@@ -562,13 +555,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for item in database:
             if hist_items <= 10:
                 hist_item = "1\n{0},{1},http://{2}:{3}/{4},{5},{6},".format(
-                    #string.zfill(item[0],7),
                     item[0], item[7],
                     HOST_IP, PORT, item[2],
                     item[4], item[6])
                 upload_list.append(hist_item)
                 hist_items += 1
-        # Latest file uploaded first
+        # Last file uploaded is sent first
         upload_list.reverse()
         try:
             upload_list[0] = string.replace(upload_list[0], "1", "0", 1)
@@ -632,20 +624,32 @@ if __name__ == "__main__":
     CONFIG_FILE = "server.cfg"
     config = ConfigParser.RawConfigParser()
     if CONFIG_FILE not in os.listdir("."):
-        print("No config file present. Setup:")
+        print("No config file present. Entering setup:")
         config.add_section("Server")
+
+        server_addr = raw_input("IP address or domain name (Default: external IP address): ")
         config.set("Server", "IP",
-            raw_input("IP address or domain name: "))
-        config.set("Server", "Port", raw_input("Port: "))
-        config.set("Server", "PasswordSalt", gen_api_key() + gen_api_key())
+            urllib2.urlopen("http://whatismyip.org").read() if server_addr == "" else server_addr)
+
+        port = raw_input("Port (Default: random port): ")
+        config.set("Server", "Port",
+            random.randint(1024, 65535) if port == "" else port)
+
+        database_name = raw_input("Database Name (Default: pypuush.sqlite): ")
         config.set("Server", "DatabaseName",
-            raw_input("Database Name (ex: puushdata.sqlite): "))
+            "pypuush.sqlite" if database_name == "" else database_name)
+
+        admin_pass = getpass.getpass("Admin password (Default: 12345): ")
         config.set("Server", "AdminPass",
-            getpass.getpass("Admin password (Blank to disable): "))
+            "12345" if admin_pass == "" else admin_pass)
+
+        quota = raw_input("Enable quota? (200MB) (Default: no) [yes/no]: ")
+        config.set("Server", "Quota",
+            "1" if quota == "yes" else "0")
+
         config.set("Server", "EnableRegistration", "1")
         config.set("Server", "EnableAPI", "1")
-        config.set("Server", "Quota",
-            raw_input("Enable quota? (200MB) [1/0]: "))
+        config.set("Server", "PasswordSalt", gen_api_key() + gen_api_key())
         config.set("Server", "UploadDir", "Uploads/")
         config.set("Server", "ProgVer", "83")
         config.set("Server", "AutoUpdate", "1")
@@ -670,9 +674,9 @@ if __name__ == "__main__":
     if not DATABASE_NAME:
         print("No database name found. Please add a value to DatabaseName in {0}.".format(CONFIG_FILE))
         sys.exit()
-    db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
-    database = db_connection.cursor()
     if DATABASE_NAME not in os.listdir("."):
+        db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
+        database = db_connection.cursor()
         print("Generating database...")
         database.execute(
             "CREATE TABLE users (id INTEGER PRIMARY KEY, "\
@@ -685,6 +689,8 @@ if __name__ == "__main__":
             "filename TEXT, size INTEGER, views INTEGER, timestamp TEXT);")
         db_connection.commit()
     else:
+        db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
+        database = db_connection.cursor()
         try:
             # Making sure both tables are there
             database.execute("SELECT * FROM users;")
@@ -695,15 +701,13 @@ if __name__ == "__main__":
 
     Server = ThreadedHTTPServer(("", PORT), RequestHandler)
     print("PyPuush Started - {0}:{1}".format(HOST_IP, PORT))
-    sys.stderr = open(os.devnull, "w")
-    sys.stdout = open(os.devnull, "w")
+    # sys.stderr = open(os.devnull, "w")
+    # sys.stdout = open(os.devnull, "w")
     try:
         Server.serve_forever()
     except KeyboardInterrupt:
-        print("Stopping...")
         with open(CONFIG_FILE, "wb") as configfile:
             config.write(configfile)
         Server.server_close()
         database.close()
-        print("Server Stopped.")
         sys.exit(0)
