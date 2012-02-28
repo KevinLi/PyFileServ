@@ -33,5 +33,5 @@ This script allows the saving and management of files captured with puush or oth
 * JSON data of a file can be accessed at http://HOST:PORT/api?file=filename
 
 ###Known bugs###
-#USES EXTREME AMOUNTS OF MEMORY#
+* Memory usage increases insanely if spammed
 * Client crashes on cancellation of upload
