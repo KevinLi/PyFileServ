@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+ #!/usr/bin/env python
 
 import sys
 # HTTP Server
@@ -16,7 +16,7 @@ import cgi
 import string
 # For browsers, mainly.
 import mimetypes
-# File retrieval
+# Regex
 import re
 # Configuration
 import ConfigParser
@@ -129,13 +129,13 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.wfile.write(
                     '<form action="/register" method="POST">'\
                     '<table>'\
-                    '<tr><td><input type="text" name="email" placeholder="Email" /></td></tr>'\
-                    '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
-                    '<tr><td><input type="password" name="passc" placeholder="Confirm Password" /></td></tr>'\
+                    '<tr><td><input type="text" name="e" placeholder="Email" /></td></tr>'\
+                    '<tr><td><input type="password" name="p" placeholder="Password" /></td></tr>'\
+                    '<tr><td><input type="password" name="q" placeholder="Confirm Password" /></td></tr>'\
                     '<tr><td><input type="submit" value="Register" /></td></tr>'\
                     '</table></form>')
             else:
-                self.wfile.write("Registration is disabled.")
+                self.wfile.write("Registration has been disabled.")
             self.wfile.write("</body></html>")
 # PAGE ICON
         # Seems to be requested by most/all browsers.
@@ -148,6 +148,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(
                 '<br /><br /><div id="main">'\
                 '<a href="./upload">Web Upload</a><br /><br />'\
+                '<a href="./login">Login</a><br /><br />'\
                 '<a href="./register">Register</a><br /><br />'\
                 '<a href="./admin">Admin Page</a></div>'\
                 '</body></html>')
@@ -157,7 +158,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_html_head("Administration")
             self.wfile.write(
                 '<form action="/admin" method="post"><table>'\
-                '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
+                '<tr><td><input type="password" name="p" placeholder="Password" /></td></tr>'\
                 '<tr><td><input type="submit" value="&quot;Login&quot;" /></td></tr>'\
                 '</table></form></body></html>')
 # CSS
@@ -182,27 +183,57 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(
                 '<form action="/upload" method="post" enctype="multipart/form-data"><table>'\
                 '<tr><td><input type="file" name="f" /></td></tr>'\
-                '<tr><td><input type="text" name="email" placeholder="Email" /></td></tr>'\
+                '<tr><td><input type="text" name="e" placeholder="Email" /></td></tr>'\
                 '<tr><td><input type="password" name="p" placeholder="Password" /><input type="submit" value="Upload" /></td></tr>'\
                 '</table></form></body></html>')
-# JSON DATA
+# LOGIN
+        elif self.path == "/login":
+            self.send_response_header(200, {"Content-Type":"text/html"})
+            self.send_html_head("Login")
+            self.wfile.write(
+                '<form action="/login" method="post"><table>'\
+                '<tr><td><input type="text" name="e" placeholder="email" /></td></tr>'\
+                '<tr><td><input type="password" name="p" placeholder="Password" /></td></tr>'\
+                '<tr><td><input type="submit" value="&quot;Login&quot;" /></td></tr>'\
+                '</table></form><br /><a href="./register">Register</a></body></html>')
+# DATA API (JSON)
         elif re.search("\/api\?file\=[A-Za-z0-9]{4}$", self.path):
+            self.send_response_header(200, {"Content-Type":"application/json"})
             if ENABLE_API:
-                db_data = self.select_from_db("files", "url", self.path[-4:])
-                js_data = {
-                    "mimetype":db_data[3],
-                    "filename":db_data[4],
-                    "views":db_data[6],
-                    "timestamp":db_data[7]
-                }
-                self.send_response_header(200, {"Content-Type":"application/json"})
-                self.wfile.write(
-                    json.dumps(js_data, sort_keys=True, indent=2)
-                )
+                try:
+                    db_data = self.select_from_db("files", "url", self.path[-4:])
+                    js_data = {
+                        "mimetype":db_data[3],
+                        "filename":db_data[4],
+                        "views":db_data[6],
+                        "timestamp":db_data[7]
+                    }
+                    self.wfile.write(json.dumps(js_data, sort_keys=True, indent=2))
+                except TypeError:
+                    self.wfile.write("{}")
             else:
-                self.send_response_header(200, {"Content-Type":"application/json"})
                 self.wfile.write("{}")
-
+# HISTORY (JSON)
+        elif re.search("\/hist\?key\=[A-Z0-9]{32}$", self.path):
+            self.send_response_header(200, {"Content-Type":"application/json"})
+            try:
+                db_data = self.select_from_db("users", "apikey", self.path[10:])
+                database.execute("SELECT * FROM files WHERE owner=:owner;", {
+                    "owner":db_data[1]})
+                js_data = {}
+                item_count = 0
+                for item in database:
+                    js_data[item_count] = {
+                        "id": item[0],
+                        "timestamp": item[7],
+                        "url": "http://{0}:{1}/{2}".format(HOST_IP, PORT, item[2]),
+                        "filename": item[4],
+                        "views": item[6]
+                    }
+                    item_count += 1
+                self.wfile.write(json.dumps(js_data, sort_keys=True, indent=2))
+            except TypeError:
+                self.wfile.write("{}")
 # UPDATE
         elif self.path == "http://puush.me/dl/puush-win.zip" or self.path == "http://puush.me/dl/puush.zip":
             update = urllib2.urlopen(self.path).read()
@@ -225,18 +256,20 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "http://puush.me/api/auth":
             self.send_response_header(200, {"Content-Type":"text/plain"})
             userinfo = {"email":"", "password":"", "key":"", "usage":""}
-            authstring = self.rfile.read(
-                int(self.headers.getheader("Content-Length"))).split("&")
-            userinfo["email"] = authstring[0][2:]
-            if authstring[1][0] == "p":
-                userinfo["password"] = authstring[1][2:]
-            elif authstring[1][0] == "k":
-                userinfo["key"] = authstring[1][2:]
+            form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+                environ={"REQUEST_METHOD":"POST",
+                    "CONTENT_TYPE":self.headers["Content-Type"]})
+            if "e" in form.keys():
+                userinfo["email"] = form["e"].value
+            if "k" in form.keys():
+                userinfo["key"] = form["k"].value
+            elif "p" in form.keys():
+                userinfo["password"] = form["p"].value
             db_data = self.select_from_db("users", "email", userinfo["email"])
             try:
                 if db_data[1] == userinfo["email"] and (
-                        db_data[2] == hash_pass(userinfo["password"]) or
-                        db_data[3] == userinfo["key"]):
+                        db_data[3] == userinfo["key"] or
+                        db_data[2] == hash_pass(userinfo["password"])):
                     userinfo["key"] = db_data[3]
                     userinfo["usage"] = db_data[4]
                     self.wfile.write("{0},{1},,{2}".format(
@@ -246,22 +279,17 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     ))
             except TypeError:
                 self.wfile.write("-1") # User is not in database
-            del userinfo
 # UPLOAD
-        elif self.path == "http://puush.me/api/up":
-            try:
-                return_url, image_num, file_usage = self.handle_upload()
-                self.send_response_header(200, {"Content-Type":"text/plain"})
-                self.wfile.write("0,{0},{1},{2}".format(
-                    return_url, image_num, file_usage))
-            except BaseException:
-                pass
+        elif self.path == "http://puush.me/api/up" or self.path == "/up":
+            return_url, file_num, file_usage = self.handle_upload()
+            self.send_response_header(200, {"Content-Type":"text/plain"})
+            self.wfile.write("0,{0},{1},{2}".format(
+                return_url, file_num, file_usage))
 # DELETION
-        elif self.path == "http://puush.me/api/del":
+        elif self.path == "http://puush.me/api/del" or self.path == "/del":
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
                     "CONTENT_TYPE":self.headers["Content-Type"]})
-            # Data from form: apikey and item number
             try:
                 # Checks if user is in database. Raises TypeError if not.
                 db_data = self.select_from_db("users", "apikey", form["k"].value)
@@ -281,13 +309,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 db_connection.commit()
                 self.send_response_header(200, {"Content-Type":"text/html"})
                 self.handle_history(form["k"].value)
-                # Remove file
                 os.remove(UPLOAD_DIR + file_name)
-            # Nonexistent user
             except TypeError:
+                # Nonexistent user
                 pass
-            # See self.admin_handle_delete
-            except IOError:
+            except OSError:
+                # No such file
                 pass
 # "ERROR REPORTING"
         elif self.path == "http://puush.me/api/oshi":
@@ -299,60 +326,150 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 # REGISTRATION
         elif self.path == "/register":
-            try:
-                form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
-                    environ={"REQUEST_METHOD":"POST",
+            self.send_response_header(200, {"Content-Type":"text/html"})
+            self.send_html_head("Registration")
+            if ENABLE_REGISTRATION == True:
+                try:
+                    form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+                        environ={"REQUEST_METHOD":"POST",
+                            "CONTENT_TYPE":self.headers["Content-Type"]})
+                    email_exists = False
+                    db_data = database.execute("SELECT * FROM USERS;")
+                    for row in db_data:
+                        if form["e"].value == row[1]:
+                            email_exists = True
+                    if email_exists == True:
+                        self.wfile.write(
+                            "That email has already been registered with. Please use a different email address.")
+                    elif (re.search(".+@.+\..+", form["e"].value)
+                         and len(form["p"].value) >= 5
+                         and form["p"].value == form["q"].value
+                       ):
+                        user_key = gen_api_key()
+                        database.execute(
+                            "INSERT INTO users VALUES (NULL, :email, :pass, :apikey, 0);", {
+                                "email":form["e"].value,
+                                "pass":hash_pass(form["p"].value),
+                                "apikey":user_key})
+                        db_connection.commit()
+                        self.wfile.write(
+                            'Registered!<br />'\
+                            'You may now log in with your email and password.<br />'\
+                            'Your user API key is {0}'.format(user_key))
+                    else:
+                        self.wfile.write(
+                            "Please make sure that your email address is in the correct email address format and "\
+                            "that your password is more than 5 characters.")
+                except KeyError:
+                    self.wfile.write("At least put <i>something</i> in there.")
+                self.wfile.write("</body></html>")
+            else:
+                self.wfile.write("Registration has been disabled.</body></html>")
+# LOGIN
+        elif self.path == "/login":
+            form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+                environ={"REQUEST_METHOD":"POST",
                         "CONTENT_TYPE":self.headers["Content-Type"]})
-                db_data = database.execute("SELECT * FROM USERS;")
-                email_exists = False
-                for row in db_data:
-                    if form["email"].value == row[1]:
-                        email_exists = True
-                if email_exists == True:
-                    self.send_response_header(200, {"Content-Type":"text/html"})
-                    self.send_html_head("Registration")
+            self.send_response_header(200, {"Content-Type":"text/html"})
+            self.send_html_head("Account Management")
+            if "p" in form.keys():
+                try:
+                    db_data = self.select_from_db("users", "passwordHash", hash_pass(form["p"].value))
+                    if db_data == None:
+                        raise TypeError
+                    if "d" in form.keys():
+                        db_data = database.execute("SELECT * FROM files WHERE owner=:owner;",
+                            {"owner":form["e"].value})
+                        try:
+                            for row in db_data:
+                                if form["d"].value == str(row[2]):
+                                    self.admin_handle_delete(form["d"].value)
+                        except AttributeError:
+                            files = []
+                            for row in db_data:
+                                files.append(str(row[2]))
+                            for url in form["d"]:
+                                if url.value in files:
+                                    self.admin_handle_delete(url.value)
+
+                    if "q" in form.keys():
+                        # Password change
+                        database.execute("UPDATE users SET passwordHash=:passhash where email=:email;",
+                            {"passhash":hash_pass(form["q"].value), "email":form["e"].value})
+                        db_connection.commit()
+                        database.execute("UPDATE users SET apikey=:apikey where email=:email;",
+                            {"apikey":gen_api_key(), "email":form["e"].value})
+                        self.wfile.write("Password changed!<br />")
+
+                    db_data = self.select_from_db("users", "email", form["e"].value)
+                    self.wfile.write("<table><tr><td>API Key: {0}</td></tr></table><br />".format(db_data[3]))
+
                     self.wfile.write(
-                        "That email has been registered with. Please use a different email address.")
-                elif (re.search(".+@.+\..+", form["email"].value)
-                     and len(form["pass"].value) >= 5
-                     and form["pass"].value == form["passc"].value
-                   ):
-                    user_key = gen_api_key()
-                    database.execute(
-                        "INSERT INTO users VALUES (NULL, :email, :pass, :apikey, 0);", {
-                            "email":form["email"].value,
-                            "pass":hash_pass(form["pass"].value),
-                            "apikey":user_key})
-                    db_connection.commit()
-                    self.send_response_header(200, {"Content-Type":"text/html"})
-                    self.send_html_head("Registration")
+                        '<form name="delete" action="/login" method="POST">'\
+                        '<table><thead><tr>'\
+                        '<th class="n">Name</th><th class="v">Views</th>'\
+                        '<th class="ts">Timestamp (Server Time)</th>'\
+                        '<th class="s">Size (Bytes)</th><th class="t">Type</th><th class="d">Delete</th>'\
+                        '</tr></thead><tbody>')
+
+                    database.execute("SELECT * FROM files WHERE owner=:owner;",
+                        {"owner":form["e"].value})
+                    for item in database:
+                        self.wfile.write(
+                            '<tr>'\
+                            '<td class="n"><a href="{0}">{1}</a></td>'\
+                            '<td class="v">{2}</td><td class="ts">{3}</td>'\
+                            '<td class="s">{4}</td>'\
+                            '<td class="t">{5}</td><td class="d">'\
+                            '<input type="checkbox" name="d" value="{0}" />'\
+                            '</td></tr>'.format(
+                                item[2], item[4], item[6], item[7], item[5], item[3]))
                     self.wfile.write(
-                        'Registered!<br />'\
-                        'You may now log in with your email and password.<br />'\
-                        'Your user API key is {0}</body></html>'.format(user_key))
-                else:
-                    self.send_response_header(200, {"Content-Type":"text/plain"})
+                        '<tr><td><input type="password" name="p" placeholder="Password" />'\
+                        '<input type="hidden" name="e" value="{0}" />'\
+                        '<input type="submit" value="Delete" />'\
+                        '</td><td></td><td></td><td></td><td></td><td></td>'\
+                        '</tr></tbody></table></form><br />'.format(form["e"].value))
                     self.wfile.write(
-                        "Please make sure that your email address is in the correct "\
-                        "format and that your password is more than 5 characters.")
-            except KeyError:
-                self.send_response_header(400, {"Content-Type":"text/html"})
-                self.wfile.write("At least put <i>something</i> in there.")
+                        '<form name="passchange" action="/login" method="POST">'\
+                        '<input type="hidden" name="e" value="{0}" />'\
+                        '<table><tr>'\
+                        '<td><input type="password" name="p" placeholder="Current Password" /></td>'\
+                        '<td><input type="password" name="q" placeholder="New Password" /></td>'\
+                        '<td><input type="submit" value="Change" /></td>'\
+                        '</tr></table></form>'.format(form["e"].value))
+                    self.wfile.write("</body></html>")
+                except KeyError:
+                    # No email
+                    self.wfile.write("Bad Login: No email")
+                except TypeError:
+                    # Mismatch
+                    self.wfile.write("Bad Login: Invalid details")
+            else:
+                self.wfile.write("Bad Login: No password")
+                
+
 # ADMINISTRATION
         elif self.path == "/admin":
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                 environ={"REQUEST_METHOD":"POST",
                     "CONTENT_TYPE":self.headers["Content-Type"]})
-            if "pass" in form.keys():
-                if form["pass"].value == ADMIN_PASS:
+            if "p" in form.keys():
+                if form["p"].value == ADMIN_PASS:
                     self.send_response_header(200, {"Content-Type":"text/html"})
                     if "d" in form.keys():
-                        # This feels really hacky, but it works.
+                        db_data = database.execute("SELECT * FROM files;")
                         try:
-                            self.admin_handle_delete(form["d"].value)
+                            for row in db_data:
+                                if form["d"].value == str(row[2]):
+                                    self.admin_handle_delete(form["d"].value)
                         except AttributeError:
+                            files = []
+                            for row in db_data:
+                                files.append(str(row[2]))
                             for url in form["d"]:
-                                self.admin_handle_delete(url.value)
+                                if url.value in files:
+                                    self.admin_handle_delete(url.value)
                     elif "q" in form.keys():
                         QUOTA = int(form["q"].value)
                         config.set("Server", "Quota", form["q"].value)
@@ -362,13 +479,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     elif "a" in form.keys():
                         ENABLE_API = bool(int(form["a"].value))
                         config.set("Server", "EnableAPI", form["a"].value)
-                    elif "pass" in form.keys() and "newpass" in form.keys():
-                        if form["pass"].value == ADMIN_PASS:
-                            ADMIN_PASS = form["newpass"].value
-                            config.set("Server", "AdminPass", form["newpass"].value)
-                    elif "reload" in form.keys():
+                    elif "p" in form.keys() and "n" in form.keys():
+                        if form["p"].value == ADMIN_PASS:
+                            ADMIN_PASS = form["n"].value
+                            config.set("Server", "AdminPass", form["q"].value)
+                    elif "l" in form.keys():
                         load_config()
-                    database.execute("SELECT * FROM files;")
                     self.send_html_head("Administration")
                     self.wfile.write(
                         '<form name="delete" action="/admin" method="POST">'\
@@ -377,6 +493,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<th class="ts">Timestamp (Server Time)</th><th class="o">Owner</th>'\
                         '<th class="s">Size (Bytes)</th><th class="t">Type</th><th class="d">Delete</th>'\
                         '</tr></thead><tbody>')
+                    database.execute("SELECT * FROM files;")
                     for item in database:
                         self.wfile.write(
                             '<tr>'\
@@ -389,7 +506,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             '</td></tr>'.format(
                                 item[2], item[4], item[6], item[7], item[1], item[5], item[3]))
                     self.wfile.write(
-                        '<tr><td><input type="password" name="pass" placeholder="Password" />'\
+                        '<tr><td><input type="password" name="p" placeholder="Password" />'\
                         '<input type="submit" value="Delete" />'\
                         '</td><td></td><td></td><td></td><td></td><td></td><td></td>'\
                         '</tr></tbody></table></form><br /><table><tr><td>')
@@ -399,7 +516,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<form name="quota" action="/admin" method="POST">'\
                         'Quota: <div class="statGrey">{0}</div>'\
                         '<input type="hidden" name="q" value="{1}" />'\
-                        '<input type="password" name="pass" placeholder="Password" />'\
+                        '<input type="password" name="p" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
                             quota_setting[0], quota_setting[1], quota_setting[2]))
 
@@ -408,7 +525,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<form name="registration" action="/admin" method="POST">'\
                         'Registration: <div class="{3}">{0}</div>'\
                         '<input type="hidden" name="r" value="{1}" />'\
-                        '<input type="password" name="pass" placeholder="Password" />'\
+                        '<input type="password" name="p" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
                             registration_setting[0],
                             registration_setting[1],
@@ -419,7 +536,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<form name="api" action="/admin" method="POST">'\
                         'Web API: <div class="{3}">{0}</div>'\
                         '<input type="hidden" name="a" value="{1}" />'\
-                        '<input type="password" name="pass" placeholder="Password" />'\
+                        '<input type="password" name="p" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
                             api_setting[0],
                             api_setting[1],
@@ -429,16 +546,16 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '</td><td><form name="changepass" action="/admin" method="POST">'\
                         '<table>'\
                         '<tr><td>Change Administrator Password:</td></tr>'\
-                        '<tr><td><input type="password" name="pass" placeholder="Current Password" /></td></tr>'\
-                        '<tr><td><input type="password" name="newpass" placeholder="New Password" /></td></tr>'\
+                        '<tr><td><input type="password" name="p" placeholder="Current Password" /></td></tr>'\
+                        '<tr><td><input type="password" name="n" placeholder="New Password" /></td></tr>'\
                         '<tr><td><input type="submit" value="Change" /></td></tr>'\
                         '</table></form><br />')
                     self.wfile.write(
                         '<form name="reload" action="/admin" method="POST">'\
                         '<table>'\
                         '<tr><td>Reload Config from file:</td></tr>'\
-                        '<tr><td><input type="password" name="pass" placeholder="Password" /></td></tr>'\
-                        '<tr><td><input type="submit" name="reload" value="Reload Config" /></td></tr>'\
+                        '<tr><td><input type="password" name="p" placeholder="Password" /></td></tr>'\
+                        '<tr><td><input type="submit" name="l" value="Reload Config" /></td></tr>'\
                         '</table></form></td></tr></table>'
                         )
                     self.wfile.write(
@@ -465,7 +582,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 "REQUEST_METHOD":"POST",
                 "CONTENT_TYPE":self.headers["Content-Type"]})
             try:
-                db_data = self.select_from_db("users", "email", form["email"].value)
+                db_data = self.select_from_db("users", "email", form["e"].value)
                 if str(db_data[2]) == hash_pass(form["p"].value):
                     if db_data[4] + len(form["f"].value) <= 209715200:
                         new_filename = gen_filename()
@@ -475,7 +592,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         database.execute(
                             "UPDATE users SET usage=usage+:file_len WHERE email=:email;",
                                 {"file_len":file_length,
-                                "email":form["email"].value})
+                                "email":form["e"].value})
                         db_connection.commit()
                         database.execute(
                             "INSERT INTO files VALUES "\
@@ -500,11 +617,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     self.send_response_header(403, {"Content-Type":"text/html"})
                     self.wfile.write("Incorrect password")
-            except KeyError, e:
-            # Incomplete upload
+            except KeyError:
+                # Incomplete upload
                 pass
-            except TypeError, e:
-                print(e)
+            except TypeError:
                 self.send_response_header(403, {"Content-Type":"text/html"})
                 self.wfile.write("Invalid email")
 
@@ -513,62 +629,69 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={
             "REQUEST_METHOD":"POST",
             "CONTENT_TYPE":self.headers["Content-Type"]})
-        form_data_key = form["k"].value
-        # Currently form["c"] and form["z"] are unknown, but not needed
-        # Also, form["z"] is always "poop" for some reason
-        # form_data_c = form["c"].value
-        # form_data_z = form["z"].value
-        form_data_file = form["f"].value
-        db_data = self.select_from_db("users", "apikey", form_data_key)
-        if db_data[3] == form_data_key:
-            if db_data[4] + len(form_data_file) <= 209715200:
-                new_filename = gen_filename()
-                with open(UPLOAD_DIR + new_filename, "wb") as new_file:
-                    new_file.write(form_data_file)
-                file_length = len(form_data_file)
-                database.execute(
-                    "UPDATE users SET usage=usage+:file_len WHERE apikey=:apikey;",
-                        {"file_len":file_length,
-                        "apikey":form_data_key})
-                db_connection.commit()
-                database.execute(
-                    "INSERT INTO files VALUES "\
-                    "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
-                        "owner":db_data[1],
-                        "url":new_filename,
-                        "mimetype":detect_mimetype(form["f"].filename),
-                        "filename":form["f"].filename,
-                        "size":file_length,
-                        "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
-                db_connection.commit()
-                database.execute("SELECT * FROM files WHERE url=:url;", {
-                    "url":new_filename})
-                return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
-            else:
-                return "Quota exceeded!", 0, 0
+        try:
+            form_data_key = form["k"].value
+            # Currently form["c"] and form["z"] are unknown, but not needed
+            # Also, form["z"] is always "poop" for some reason
+            # form_data_c = form["c"].value
+            # form_data_z = form["z"].value
+            form_data_file = form["f"].value
+            db_data = self.select_from_db("users", "apikey", form_data_key)
+            if db_data == None:
+                raise KeyError
+            if db_data[3] == form_data_key:
+                if db_data[4] + len(form_data_file) <= 209715200:
+                    new_filename = gen_filename()
+                    with open(UPLOAD_DIR + new_filename, "wb") as new_file:
+                        new_file.write(form_data_file)
+                    file_length = len(form_data_file)
+                    database.execute(
+                        "UPDATE users SET usage=usage+:file_len WHERE apikey=:apikey;",
+                            {"file_len":file_length,
+                            "apikey":form_data_key})
+                    db_connection.commit()
+                    database.execute(
+                        "INSERT INTO files VALUES "\
+                        "(NULL, :owner, :url, :mimetype, :filename, :size, 0, :timestamp);", {
+                            "owner":db_data[1],
+                            "url":new_filename,
+                            "mimetype":detect_mimetype(form["f"].filename),
+                            "filename":form["f"].filename,
+                            "size":file_length,
+                            "timestamp":time.strftime("%Y-%m-%d %H:%M:%S")})
+                    db_connection.commit()
+                    database.execute("SELECT * FROM files WHERE url=:url;", {
+                        "url":new_filename})
+                    return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
+                else:
+                    return "Quota exceeded!", 0, 0
+        except KeyError:
+            return "Bad Request", 0, 0
+
     def handle_history(self, apikey):
         db_data = self.select_from_db("users", "apikey", apikey)
-        database.execute("SELECT * FROM files WHERE owner=:owner;", {
-            "owner":db_data[1]})
-        upload_list = []
-        hist_items = 0
-        for item in database:
-            if hist_items <= 10:
-                hist_item = "1\n{0},{1},http://{2}:{3}/{4},{5},{6},".format(
-                    item[0], item[7],
-                    HOST_IP, PORT, item[2],
-                    item[4], item[6])
-                upload_list.append(hist_item)
-                hist_items += 1
-        # Last file uploaded is sent first
-        upload_list.reverse()
-        try:
-            upload_list[0] = string.replace(upload_list[0], "1", "0", 1)
-        # No history
-        except IndexError:
-            pass
-        upload_list.append("1\n")
-        self.wfile.write("".join(upload_list))
+        if db_data != None:
+            database.execute("SELECT * FROM files WHERE owner=:owner;", {
+                "owner":db_data[1]})
+            upload_list = []
+            hist_items = 0
+            for item in database:
+                if hist_items <= 10:
+                    hist_item = "1\n{0},{1},http://{2}:{3}/{4},{5},{6},".format(
+                        item[0], item[7],
+                        HOST_IP, PORT, item[2],
+                        item[4], item[6])
+                    upload_list.append(hist_item)
+                    hist_items += 1
+            # Last file uploaded is sent first
+            upload_list.reverse()
+            try:
+                upload_list[0] = string.replace(upload_list[0], "1", "0", 1)
+            # No history
+            except IndexError:
+                pass
+            upload_list.append("1\n")
+            self.wfile.write("".join(upload_list))
     def admin_handle_delete(self, url):
         try:
             # Get file's size from item number
@@ -595,7 +718,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         # Already deleted; probably tried to refresh.
         except TypeError:
             pass
-        # File was deleted, but was in database.
+        # No such file
         except OSError:
             pass
 
@@ -701,8 +824,8 @@ if __name__ == "__main__":
 
     Server = ThreadedHTTPServer(("", PORT), RequestHandler)
     print("PyPuush Started - {0}:{1}".format(HOST_IP, PORT))
-    # sys.stderr = open(os.devnull, "w")
-    # sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
+    sys.stdout = open(os.devnull, "w")
     try:
         Server.serve_forever()
     except KeyboardInterrupt:
