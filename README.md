@@ -1,8 +1,8 @@
-##PyPuush##
+##PyFileServ##
 ***
-A Puush Server. In Python.
+A Python File Server
 ***
-This script allows the saving and management of files captured with puush or other programs to a server.
+This script allows the saving and management of files to a server.
 
 ###Requirements###
 * Python
