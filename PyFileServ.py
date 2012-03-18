@@ -380,18 +380,17 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if "d" in form.keys():
                         db_data = database.execute("SELECT * FROM files WHERE owner=:owner;",
                             {"owner":form["e"].value})
-                        try:
-                            for row in db_data:
-                                if form["d"].value == str(row[2]):
-                                    self.admin_handle_delete(form["d"].value)
-                        except AttributeError:
+                        if type(form["d"]) == list:
                             files = []
                             for row in db_data:
                                 files.append(str(row[2]))
                             for url in form["d"]:
                                 if url.value in files:
                                     self.admin_handle_delete(url.value)
-
+                        else:
+                            for row in db_data:
+                                if form["d"].value == str(row[2]):
+                                    self.admin_handle_delete(form["d"].value)
                     if "q" in form.keys():
                         # Password change
                         database.execute("UPDATE users SET passwordHash=:passhash where email=:email;",
@@ -459,17 +458,17 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.send_response_header(200, {"Content-Type":"text/html"})
                     if "d" in form.keys():
                         db_data = database.execute("SELECT * FROM files;")
-                        try:
-                            for row in db_data:
-                                if form["d"].value == str(row[2]):
-                                    self.admin_handle_delete(form["d"].value)
-                        except AttributeError:
+                        if type(form["d"]) == list:
                             files = []
                             for row in db_data:
                                 files.append(str(row[2]))
                             for url in form["d"]:
                                 if url.value in files:
                                     self.admin_handle_delete(url.value)
+                        else:
+                            for row in db_data:
+                                if form["d"].value == str(row[2]):
+                                    self.admin_handle_delete(form["d"].value)
                     elif "q" in form.keys():
                         QUOTA = int(form["q"].value)
                         config.set("Server", "Quota", form["q"].value)
@@ -584,7 +583,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             try:
                 db_data = self.select_from_db("users", "email", form["e"].value)
                 if str(db_data[2]) == hash_pass(form["p"].value):
-                    if db_data[4] + len(form["f"].value) <= 209715200:
+                    if int(db_data[4]) + len(form["f"].value) <= 209715200:
                         new_filename = gen_filename()
                         with open(UPLOAD_DIR + new_filename, "wb") as new_file:
                             new_file.write(form["f"].value)
@@ -618,7 +617,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.send_response_header(403, {"Content-Type":"text/html"})
                     self.wfile.write("Incorrect password")
             except KeyError:
-                # Incomplete upload
                 pass
             except TypeError:
                 self.send_response_header(403, {"Content-Type":"text/html"})
@@ -639,7 +637,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             db_data = self.select_from_db("users", "apikey", form_data_key)
             if db_data == None:
                 raise KeyError
-            if db_data[3] == form_data_key:
+            if str(db_data[3]) == form_data_key:
                 if db_data[4] + len(form_data_file) <= 209715200:
                     new_filename = gen_filename()
                     with open(UPLOAD_DIR + new_filename, "wb") as new_file:
@@ -665,8 +663,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
                 else:
                     return "Quota exceeded!", 0, 0
-        except KeyError:
+        except KeyError, e:
+            print(e)
             return "Bad Request", 0, 0
+        except BaseException, e:
+            print(e)
+            return "Something Bad Happened", 0, 0
 
     def handle_history(self, apikey):
         db_data = self.select_from_db("users", "apikey", apikey)
@@ -758,9 +760,9 @@ if __name__ == "__main__":
         config.set("Server", "Port",
             random.randint(1024, 65535) if port == "" else port)
 
-        database_name = raw_input("Database Name (Default: pypuush.sqlite): ")
+        database_name = raw_input("Database Name (Default: PyFileServData.sqlite): ")
         config.set("Server", "DatabaseName",
-            "pypuush.sqlite" if database_name == "" else database_name)
+            "PyFileServData.sqlite" if database_name == "" else database_name)
 
         admin_pass = getpass.getpass("Admin password (Default: 12345): ")
         config.set("Server", "AdminPass",
@@ -823,7 +825,7 @@ if __name__ == "__main__":
             sys.exit()
 
     Server = ThreadedHTTPServer(("", PORT), RequestHandler)
-    print("PyPuush Started - {0}:{1}".format(HOST_IP, PORT))
+    print("PyFileServ Started - {0}:{1}".format(HOST_IP, PORT))
     sys.stderr = open(os.devnull, "w")
     sys.stdout = open(os.devnull, "w")
     try:
