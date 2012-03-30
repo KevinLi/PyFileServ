@@ -673,7 +673,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_history(self, apikey):
         db_data = self.select_from_db("users", "apikey", apikey)
         if db_data != None:
-            database.execute("SELECT * FROM files WHERE owner=:owner;", {
+            database.execute("SELECT * FROM files WHERE owner=:owner ORDER BY id desc;", {
                 "owner":db_data[1]})
             upload_list = []
             hist_items = 0
@@ -685,8 +685,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         item[4], item[6])
                     upload_list.append(hist_item)
                     hist_items += 1
-            # Last file uploaded is sent first
-            upload_list.reverse()
             try:
                 upload_list[0] = string.replace(upload_list[0], "1", "0", 1)
             # No history
