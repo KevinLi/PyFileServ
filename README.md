@@ -63,6 +63,11 @@ This script allows the saving and management of files to a server.
 		* a: api toggle (1/0)
 		* l: reload configuration
 		* n: new password
+    * Example example usage example:
+        * echo curl -F \"k=key\" -F \"f=@$1\" 127.0.0.1:9001/up > pyfileserv.sh
+        * chmod +x pyfileserv.sh
+        * scrot
+        * ./pyfileserv.sh 1969-12-31-190000_2560x1536_scrot.png
 
 ###Notes###
 * JSON formatted file data can be accessed at http://HOST:PORT/api?file=filename
