@@ -95,6 +95,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 file_data = open(UPLOAD_DIR + filename, "rb").read()
                 self.send_response_header(200, {
                     "Content-Type":db_data[3],
+                    "Content-Length":db_data[5],
                     "Content-Disposition":'inline; filename="{0}"'.format(
                         db_data[4])})
                 database.execute(
