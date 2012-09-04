@@ -1,4 +1,4 @@
- #!/usr/bin/env python
+#!/usr/bin/env python
 
 import sys
 # HTTP Server
@@ -37,7 +37,7 @@ def gen_api_key():
 
 def hash_pass(password):
     """Returns a hashed and salted string from input"""
-    return hashlib.md5(PASSWORD_SALT + password).hexdigest()
+    return hashlib.md5(configuration.passwordSalt + password).hexdigest()
 
 characters = string.ascii_letters + string.digits
 
@@ -48,7 +48,7 @@ def gen_filename():
     else:
         gen_filename()
 def filename_exists(filename):
-    if filename in os.listdir(UPLOAD_DIR):
+    if filename in os.listdir(configuration.uploadDir):
         return gen_filename()
     else:
         return filename
@@ -86,13 +86,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_response_header(200, {})
     def do_GET(self):
-        global AUTOUPDATE, PROGRAM_VERSION, ENABLE_API
 # FILE RETRIEVAL
         if re.search("\/[A-Za-z0-9]{4}$", self.path):
             try:
                 filename = self.path[1:]
                 db_data = self.select_from_db("files", "url", filename)
-                file_data = open(UPLOAD_DIR + filename, "rb").read()
+                file_data = open(configuration.uploadDir + filename, "rb").read()
                 self.send_response_header(200, {
                     "Content-Type":db_data[3],
                     "Content-Length":db_data[5],
@@ -111,22 +110,22 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         # Mac OS X uses http://puush.me/dl/puush.xml and Sparkle
         elif self.path == "http://puush.me/dl/puush-win.txt?check=true":
             self.send_response_header(200, {"Content-Type":"text/plain"})
-            if AUTOUPDATE == True:
+            if configuration.autoUpdate == True:
                 try:
                     version = urllib2.urlopen(self.path).read()
                 # Timeouts, connection errors
                 except urllib2.URLError:
-                    version = PROGRAM_VERSION
+                    version = configuration.version
                 self.wfile.write(version)
-                PROGRAM_VERSION = version
+                configuration.version = version
             else:
-                self.wfile.write(PROGRAM_VERSION + "\n")
+                self.wfile.write(configuration.version + "\n")
 # REGISTRATION
         elif self.path == "/register":
             # HTML because registration form
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.send_html_head("Registration")
-            if ENABLE_REGISTRATION == True:
+            if configuration.enableRegistration == True:
                 self.wfile.write(
                     '<form action="/register" method="POST">'\
                     '<table>'\
@@ -200,7 +199,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 # DATA API (JSON)
         elif re.search("\/api\?file\=[A-Za-z0-9]{4}$", self.path):
             self.send_response_header(200, {"Content-Type":"application/json"})
-            if ENABLE_API:
+            if configuration.enableAPI:
                 try:
                     db_data = self.select_from_db("files", "url", self.path[-4:])
                     js_data = {
@@ -227,7 +226,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     js_data[item_count] = {
                         "id": item[0],
                         "timestamp": item[7],
-                        "url": "http://{0}:{1}/{2}".format(HOST_IP, PORT, item[2]),
+                        "url": "http://{0}:{1}/{2}".format(configuration.hostIP, configuration.hostPort, item[2]),
                         "filename": item[4],
                         "views": item[6]
                     }
@@ -245,7 +244,6 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write("404")
 
     def do_POST(self):
-        global QUOTA, ENABLE_REGISTRATION, ENABLE_API, ADMIN_PASS, HOST_IP, PORT
 # HISTORY
         if self.path == "http://puush.me/api/hist":
             self.send_response_header(200, {"Content-Type":"text/html"})
@@ -274,7 +272,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     userinfo["key"] = db_data[3]
                     userinfo["usage"] = db_data[4]
                     self.wfile.write("{0},{1},,{2}".format(
-                        QUOTA,
+                        abs(1-configuration.quota),
                         userinfo["key"],
                         userinfo["usage"]
                     ))
@@ -310,7 +308,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 db_connection.commit()
                 self.send_response_header(200, {"Content-Type":"text/html"})
                 self.handle_history(form["k"].value)
-                os.remove(UPLOAD_DIR + file_name)
+                os.remove(configuration.uploadDir + file_name)
             except TypeError:
                 # Nonexistent user
                 pass
@@ -329,7 +327,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/register":
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.send_html_head("Registration")
-            if ENABLE_REGISTRATION == True:
+            if configuration.enableRegistration == True:
                 try:
                     form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                         environ={"REQUEST_METHOD":"POST",
@@ -455,7 +453,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 environ={"REQUEST_METHOD":"POST",
                     "CONTENT_TYPE":self.headers["Content-Type"]})
             if "p" in form.keys():
-                if form["p"].value == ADMIN_PASS:
+                if form["p"].value == configuration.adminPass:
                     self.send_response_header(200, {"Content-Type":"text/html"})
                     if "d" in form.keys():
                         db_data = database.execute("SELECT * FROM files;")
@@ -471,20 +469,20 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                 if form["d"].value == str(row[2]):
                                     self.admin_handle_delete(form["d"].value)
                     elif "q" in form.keys():
-                        QUOTA = int(form["q"].value)
-                        config.set("Server", "Quota", form["q"].value)
+                        configuration.quota = int(form["q"].value)
+                        configuration.config.set("Server", "Quota", form["q"].value)
                     elif "r" in form.keys():
-                        ENABLE_REGISTRATION = bool(int(form["r"].value))
-                        config.set("Server", "EnableRegistration", form["r"].value)
+                        configuration.enableRegistration = bool(int(form["r"].value))
+                        configuration.config.set("Server", "EnableRegistration", form["r"].value)
                     elif "a" in form.keys():
-                        ENABLE_API = bool(int(form["a"].value))
-                        config.set("Server", "EnableAPI", form["a"].value)
+                        configuration.enableAPI = bool(int(form["a"].value))
+                        configuration.config.set("Server", "EnableAPI", form["a"].value)
                     elif "p" in form.keys() and "n" in form.keys():
-                        if form["p"].value == ADMIN_PASS:
-                            ADMIN_PASS = form["n"].value
-                            config.set("Server", "AdminPass", form["q"].value)
+                        if form["p"].value == configuration.adminPass:
+                            configuration.adminPass = form["n"].value
+                            configuration.config.set("Server", "AdminPass", form["q"].value)
                     elif "l" in form.keys():
-                        load_config()
+                        configuration.loadConfig()
                     self.send_html_head("Administration")
                     self.wfile.write(
                         '<form name="delete" action="/admin" method="POST">'\
@@ -511,7 +509,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '</td><td></td><td></td><td></td><td></td><td></td><td></td>'\
                         '</tr></tbody></table></form><br /><table><tr><td>')
 
-                    quota_setting = ["On", "1", "Disable"] if QUOTA == 0 else ["Off", "0", "Enable"]
+                    quota_setting = ["On", "0", "Disable"] if configuration.quota == 1 else ["Off", "1", "Enable"]
                     self.wfile.write(
                         '<form name="quota" action="/admin" method="POST">'\
                         'Quota: <div class="statGrey">{0}</div>'\
@@ -520,7 +518,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '<input type="submit" value="{2}" /></form>'.format(
                             quota_setting[0], quota_setting[1], quota_setting[2]))
 
-                    registration_setting = ["Off", "1", "Enable", "statGrey"] if ENABLE_REGISTRATION == False else ["On", "0", "Disable", "statRed"]
+                    registration_setting = ["Off", "1", "Enable", "statGrey"] if configuration.enableRegistration == False else ["On", "0", "Disable", "statRed"]
                     self.wfile.write(
                         '<form name="registration" action="/admin" method="POST">'\
                         'Registration: <div class="{3}">{0}</div>'\
@@ -531,7 +529,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             registration_setting[1],
                             registration_setting[2],
                             registration_setting[3]))
-                    api_setting = ["Off", "1", "Enable", "statGrey"] if ENABLE_API == False else ["On", "0", "Disable", "statGrey"]
+                    api_setting = ["Off", "1", "Enable", "statGrey"] if configuration.enableAPI == False else ["On", "0", "Disable", "statGrey"]
                     self.wfile.write(
                         '<form name="api" action="/admin" method="POST">'\
                         'Web API: <div class="{3}">{0}</div>'\
@@ -584,9 +582,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             try:
                 db_data = self.select_from_db("users", "email", form["e"].value)
                 if str(db_data[2]) == hash_pass(form["p"].value):
-                    if int(db_data[4]) + len(form["f"].value) <= 209715200:
+                    if (int(db_data[4]) + len(form["f"].value) <= 209715200) or configuration.quota == 0:
                         new_filename = gen_filename()
-                        with open(UPLOAD_DIR + new_filename, "wb") as new_file:
+                        with open(configuration.uploadDir + new_filename, "wb") as new_file:
                             new_file.write(form["f"].value)
                         file_length = len(form["f"].value)
                         database.execute(
@@ -610,7 +608,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.send_html_head("Web Upload")
                         self.wfile.write(
                             '<a href="{0}{1}">{0}{1}</a></body></html>'.format(
-                                UPLOAD_URL, new_filename))
+                                configuration.uploadURL, new_filename))
                     else:
                         self.send_response_header(507, {"Content-Type":"text/plain"})
                         self.wfile.write("Quota exceeded.")
@@ -639,9 +637,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if db_data == None:
                 raise KeyError
             if str(db_data[3]) == form_data_key:
-                if db_data[4] + len(form_data_file) <= 209715200:
+                if (int(db_data[4]) + len(form_data_file) <= 209715200) or configuration.quota == 0:
                     new_filename = gen_filename()
-                    with open(UPLOAD_DIR + new_filename, "wb") as new_file:
+                    with open(configuration.uploadDir + new_filename, "wb") as new_file:
                         new_file.write(form_data_file)
                     file_length = len(form_data_file)
                     database.execute(
@@ -661,7 +659,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     db_connection.commit()
                     database.execute("SELECT * FROM files WHERE url=:url;", {
                         "url":new_filename})
-                    return UPLOAD_URL + new_filename, database.fetchone()[0], file_length
+                    return configuration.uploadURL + new_filename, database.fetchone()[0], file_length
                 else:
                     return "Quota exceeded!", 0, 0
         except KeyError, e:
@@ -676,22 +674,17 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if db_data != None:
             database.execute("SELECT * FROM files WHERE owner=:owner ORDER BY id desc;", {
                 "owner":db_data[1]})
-            upload_list = []
+            upload_list = ["0\n"]
             hist_items = 0
             for item in database:
                 if hist_items <= 10:
-                    hist_item = "1\n{0},{1},http://{2}:{3}/{4},{5},{6},".format(
+                    # File index, timestamp, URL, filename, number of views,
+                    hist_item = "{0},{1},http://{2}:{3}/{4},{5},{6},1\n".format(
                         item[0], item[7],
-                        HOST_IP, PORT, item[2],
+                        configuration.hostIP, configuration.hostPort, item[2],
                         item[4], item[6])
                     upload_list.append(hist_item)
                     hist_items += 1
-            try:
-                upload_list[0] = string.replace(upload_list[0], "1", "0", 1)
-            # No history
-            except IndexError:
-                pass
-            upload_list.append("1\n")
             self.wfile.write("".join(upload_list))
     def admin_handle_delete(self, url):
         try:
@@ -715,7 +708,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             db_connection.commit()
             # Remove file last: in case file was already somehow deleted,
             # it would be removed from the database first before IOError
-            os.remove(UPLOAD_DIR + file_name)
+            os.remove(configuration.uploadDir + file_name)
         # Already deleted; probably tried to refresh.
         except TypeError:
             pass
@@ -726,80 +719,93 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class ThreadedHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     """Handle requests in a separate thread."""
 
-def load_config():
-    global HOST_IP, PORT, PASSWORD_SALT, DATABASE_NAME, ADMIN_PASS, ENABLE_REGISTRATION
-    global UPLOAD_DIR, PROGRAM_VERSION, UPLOAD_URL, QUOTA, AUTOUPDATE, ENABLE_API
-    config.read(CONFIG_FILE)
-    HOST_IP = config.get("Server", "IP")
-    PORT = config.getint("Server", "Port")
-    PASSWORD_SALT = config.get("Server", "PasswordSalt")
-    DATABASE_NAME = config.get("Server", "DatabaseName")
-    ADMIN_PASS = config.get("Server", "AdminPass")
-    ENABLE_REGISTRATION = config.getboolean("Server", "EnableRegistration")
-    ENABLE_API = config.getboolean("Server", "EnableAPI")
-    UPLOAD_DIR = config.get("Server", "UploadDir")
-    PROGRAM_VERSION = config.get("Server", "ProgVer")
-    UPLOAD_URL = "http://{0}:{1}/".format(HOST_IP, PORT)
-    QUOTA = config.getint("Server", "Quota")
-    AUTOUPDATE = config.getboolean("Server", "AutoUpdate")
+class Configuration(object):
+    def __init__(self):
+        self.config = ConfigParser.RawConfigParser()
+        self.configFile = "server.cfg"
+        self.checkConfig()
+    
+    def checkConfig(self):
+        if self.configFile not in os.listdir("."):
+            self.newConfig()
+        try:
+            self.loadConfig()
+        except ConfigParser.NoOptionError, e:
+            print("One or more options are missing/invalid:")
+            print(e)
+            sys.exit()
+        except ValueError, e:
+            print("One or more options are invalid:")
+            print(e)
+            sys.exit()
+    
+    def newConfig(self):
+        print("No config file present. Entering setup...")
+        self.config.add_section("Server")
 
-if __name__ == "__main__":
-    os.chdir(".")
-    CONFIG_FILE = "server.cfg"
-    config = ConfigParser.RawConfigParser()
-    if CONFIG_FILE not in os.listdir("."):
-        print("No config file present. Entering setup:")
-        config.add_section("Server")
+        hostIP = raw_input("IP address or domain name (Default: external IP address): ")
+        self.config.set("Server", "IP",
+            urllib2.urlopen("http://icanhazip.com/").read() if hostIP == "" else hostIP)
 
-        server_addr = raw_input("IP address or domain name (Default: external IP address): ")
-        config.set("Server", "IP",
-            urllib2.urlopen("http://whatismyip.org").read() if server_addr == "" else server_addr)
+        hostPort = raw_input("Port (Default: random port): ")
+        self.config.set("Server", "Port",
+            random.randint(1024, 65535) if hostPort == "" else hostPort)
 
-        port = raw_input("Port (Default: random port): ")
-        config.set("Server", "Port",
-            random.randint(1024, 65535) if port == "" else port)
+        databaseName = raw_input("Database Name (Default: PyFileServData.sqlite): ")
+        self.config.set("Server", "DatabaseName",
+            "PyFileServData.sqlite" if databaseName == "" else databaseName)
 
-        database_name = raw_input("Database Name (Default: PyFileServData.sqlite): ")
-        config.set("Server", "DatabaseName",
-            "PyFileServData.sqlite" if database_name == "" else database_name)
-
-        admin_pass = getpass.getpass("Admin password (Default: 12345): ")
-        config.set("Server", "AdminPass",
-            "12345" if admin_pass == "" else admin_pass)
+        adminPass = getpass.getpass("Admin password (Default: 12345): ")
+        self.config.set("Server", "AdminPass",
+            "12345" if adminPass == "" else adminPass)
 
         quota = raw_input("Enable quota? (200MB) (Default: no) [yes/no]: ")
-        config.set("Server", "Quota",
+        self.config.set("Server", "Quota",
             "1" if quota == "yes" else "0")
 
-        config.set("Server", "EnableRegistration", "1")
-        config.set("Server", "EnableAPI", "1")
-        config.set("Server", "PasswordSalt", gen_api_key() + gen_api_key())
-        config.set("Server", "UploadDir", "Uploads/")
-        config.set("Server", "ProgVer", "83")
-        config.set("Server", "AutoUpdate", "1")
-        with open(CONFIG_FILE, "wb") as configfile:
-            config.write(configfile)
-        print("Configuration file saved as {0}.".format(CONFIG_FILE))
-    try:
-        load_config()
-    except ConfigParser.NoOptionError, e:
-        print("One or more options are missing/invalid:")
-        print(e)
-        sys.exit()
-    except ValueError, e:
-        print("One or more options are invalid:")
-        print(e)
-        sys.exit()
+        self.config.set("Server", "EnableRegistration", "1")
+        self.config.set("Server", "EnableAPI", "1")
+        self.config.set("Server", "PasswordSalt", gen_api_key() + gen_api_key())
+        self.config.set("Server", "UploadDir", "Uploads/")
+        self.config.set("Server", "ProgVer",
+            urllib2.urlopen("http://puush.me/dl/puush-win.txt?check=true").read())
+        self.config.set("Server", "AutoUpdate", "1")
+        with open(self.configFile, "wb") as cf:
+            self.config.write(cf)
+        print("Configuration file saved as {0}.".format(self.configFile))
+    
+    def loadConfig(self):
+        self.config.read(self.configFile)
+        self.hostIP = self.config.get("Server", "IP")
+        self.hostPort = self.config.getint("Server", "Port")
+        self.passwordSalt = self.config.get("Server", "PasswordSalt")
+        self.databaseName = self.config.get("Server", "DatabaseName")
+        self.adminPass = self.config.get("Server", "AdminPass")
+        self.enableRegistration = self.config.getboolean("Server", "EnableRegistration")
+        self.enableAPI = self.config.getboolean("Server", "EnableAPI")
+        self.uploadDir = self.config.get("Server", "UploadDir")
+        self.version = self.config.get("Server", "ProgVer")
+        self.uploadURL = "http://{0}:{1}/".format(self.hostIP, self.hostPort)
+        self.quota = self.config.getint("Server", "Quota")
+        self.autoUpdate = self.config.getboolean("Server", "AutoUpdate")
+    
+    def saveConfig(self):
+        with open(self.configFile, "wb") as configfile:
+            self.config.write(configfile)
+            
+if __name__ == "__main__":
+    os.chdir(".")
+    configuration = Configuration()
 
-    if UPLOAD_DIR[:-1] not in os.listdir("."):
+    if configuration.uploadDir[:-1] not in os.listdir("."):
         print("Creating upload directory...")
-        os.mkdir(UPLOAD_DIR, 0744)
+        os.mkdir(configuration.uploadDir, 0744)
 
-    if not DATABASE_NAME:
+    if not configuration.databaseName:
         print("No database name found. Please add a value to DatabaseName in {0}.".format(CONFIG_FILE))
         sys.exit()
-    if DATABASE_NAME not in os.listdir("."):
-        db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
+    if configuration.databaseName not in os.listdir("."):
+        db_connection = sqlite3.connect(configuration.databaseName, check_same_thread=False)
         database = db_connection.cursor()
         print("Generating database...")
         database.execute(
@@ -813,7 +819,7 @@ if __name__ == "__main__":
             "filename TEXT, size INTEGER, views INTEGER, timestamp TEXT);")
         db_connection.commit()
     else:
-        db_connection = sqlite3.connect(DATABASE_NAME, check_same_thread=False)
+        db_connection = sqlite3.connect(configuration.databaseName, check_same_thread=False)
         database = db_connection.cursor()
         try:
             # Making sure both tables are there
@@ -823,15 +829,14 @@ if __name__ == "__main__":
             print("Invalid database file.")
             sys.exit()
 
-    Server = ThreadedHTTPServer(("", PORT), RequestHandler)
-    print("PyFileServ Started - {0}:{1}".format(HOST_IP, PORT))
-    sys.stderr = open(os.devnull, "w")
-    sys.stdout = open(os.devnull, "w")
+    Server = ThreadedHTTPServer(("", configuration.hostPort), RequestHandler)
+    print("PyFileServ Started - {0}:{1}".format(configuration.hostIP, configuration.hostPort))
+    #sys.stderr = open(os.devnull, "w")
+    #sys.stdout = open(os.devnull, "w")
     try:
         Server.serve_forever()
     except KeyboardInterrupt:
-        with open(CONFIG_FILE, "wb") as configfile:
-            config.write(configfile)
+        configuration.saveConfig()
         Server.server_close()
         database.close()
         sys.exit(0)
