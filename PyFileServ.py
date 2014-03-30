@@ -2,7 +2,7 @@
 
 import sys
 # HTTP Server
-import BaseHTTPServer
+import http.server
 # Database
 import sqlite3
 # Hashing functions and timestamps
@@ -19,30 +19,30 @@ import mimetypes
 # Regex
 import re
 # Configuration
-import ConfigParser
+import configparser
 import getpass
 # Updates
-import urllib2
+import urllib.request
 # Threading
-import SocketServer
+import socketserver
 # JSON
 import json
 
 def gen_api_key():
     """Returns 32 hexadecimal characters in uppercase"""
     rand_str = "".join(
-        [str(time.time() + random.random()) for x in xrange(5)]
+        [str(time.time() + random.random()) for x in range(5)]
     )
-    return hashlib.md5(rand_str).hexdigest().upper()
+    return hashlib.md5(rand_str.encode("utf-8")).hexdigest().upper()
 
 def hash_pass(password):
     """Returns a hashed and salted string from input"""
-    return hashlib.md5(configuration.passwordSalt + password).hexdigest()
+    return hashlib.md5(bytes(configuration.passwordSalt + password,"utf-8")).hexdigest()
 
 characters = string.ascii_letters + string.digits
 
 def gen_filename():
-    filename = "".join(random.choice(characters) for x in xrange(4))
+    filename = "".join(random.choice(characters) for x in range(4))
     if filename_exists(filename) == filename:
         return filename
     else:
@@ -62,7 +62,7 @@ def detect_mimetype(filename):
     else:
         return "text/plain"
 
-class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class RequestHandler(http.server.BaseHTTPRequestHandler):
 
     def select_from_db(self, table, item, value):
         """Gets data from database. Use this only if it's to return one object"""
@@ -77,11 +77,11 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_header(header, headers[header])
         self.end_headers()
     def send_html_head(self, title):
-        self.wfile.write(
+        self.wfile.write(bytes
             '<!doctype html><html><head>'\
             '<meta charset=utf-8 /><title>{0}</title>'\
             '<link rel="stylesheet" type="text/css" href="style.css" />'\
-            '</head><body>'.format(title))
+            '</head><body>'.format(title),"utf-8"))
 
     def do_HEAD(self):
         self.send_response_header(200, {})
@@ -105,16 +105,16 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # Nonexistent file
             except IOError:
                 self.send_response_header(404, {"Content-Type":"text/plain"})
-                self.wfile.write("404")
+                self.wfile.write(b"404")
 # UPDATE CHECK (WINDOWS)
         # Mac OS X uses http://puush.me/dl/puush.xml and Sparkle
         elif self.path == "http://puush.me/dl/puush-win.txt?check=true":
             self.send_response_header(200, {"Content-Type":"text/plain"})
             if configuration.autoUpdate == True:
                 try:
-                    version = urllib2.urlopen(self.path).read()
+                    version = urllib.urlopen(self.path).read()
                 # Timeouts, connection errors
-                except urllib2.URLError:
+                except urllib.URLError:
                     version = configuration.version
                 self.wfile.write(version)
                 configuration.version = version
@@ -126,17 +126,17 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.send_html_head("Registration")
             if configuration.enableRegistration == True:
-                self.wfile.write(
+                self.wfile.write(bytes(
                     '<form action="/register" method="POST">'\
                     '<table>'\
                     '<tr><td><input type="text" name="e" placeholder="Email" /></td></tr>'\
                     '<tr><td><input type="password" name="p" placeholder="Password" /></td></tr>'\
                     '<tr><td><input type="password" name="q" placeholder="Confirm Password" /></td></tr>'\
                     '<tr><td><input type="submit" value="Register" /></td></tr>'\
-                    '</table></form>')
+                    '</table></form>',"utf-8"))
             else:
-                self.wfile.write("Registration has been disabled.")
-            self.wfile.write("</body></html>")
+                self.wfile.write(b"Registration has been disabled.")
+            self.wfile.write(b"</body></html>")
 # PAGE ICON
         # Seems to be requested by most/all browsers.
         elif self.path == "/favicon.ico":
@@ -145,25 +145,25 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == "/":
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.send_html_head("Main")
-            self.wfile.write(
+            self.wfile.write(bytes(
                 '<br /><br /><div id="main">'\
                 '<a href="./upload">Web Upload</a><br /><br />'\
                 '<a href="./login">Login</a><br /><br />'\
                 '<a href="./register">Register</a><br /><br />'\
                 '<a href="./admin">Admin Page</a></div>'\
-                '</body></html>')
+                '</body></html>',"utf-8"))
 # ADMINISTRATION
         elif self.path == "/admin":
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.send_html_head("Administration")
-            self.wfile.write(
+            self.wfile.write(bytes(
                 '<form action="/admin" method="post"><table>'\
                 '<tr><td><input type="password" name="p" placeholder="Password" /></td></tr>'\
                 '<tr><td><input type="submit" value="&quot;Login&quot;" /></td></tr>'\
-                '</table></form></body></html>')
+                '</table></form></body></html>',"utf-8"))
 # CSS
         elif self.path == "/style.css":
-            self.wfile.write(
+            self.wfile.write(bytes(
                 'body {background-color: #D0D0D0; color: #000000; padding: 10px; font: 90% monospace;}'\
                 'a {text-decoration: none; color: #404040;}'\
                 'table {padding: 5px; border: 1px dotted #000000;}'\
@@ -175,27 +175,27 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 '#main {text-align: center; padding: 10px;}'\
                 '.s {text-align: right;}'\
                 'footer {text-decoration: none; color: B0B0B0; position: fixed; bottom: 0px; right: 0px;}'
-            )
+            ,"utf-8"))
 # WEB UPLOAD
         elif self.path == "/upload":
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.send_html_head("Web Upload")
-            self.wfile.write(
+            self.wfile.write(bytes(
                 '<form action="/upload" method="post" enctype="multipart/form-data"><table>'\
                 '<tr><td><input type="file" name="f" /></td></tr>'\
                 '<tr><td><input type="text" name="e" placeholder="Email" /></td></tr>'\
                 '<tr><td><input type="password" name="p" placeholder="Password" /><input type="submit" value="Upload" /></td></tr>'\
-                '</table></form></body></html>')
+                '</table></form></body></html>',"utf-8"))
 # LOGIN
         elif self.path == "/login":
             self.send_response_header(200, {"Content-Type":"text/html"})
             self.send_html_head("Login")
-            self.wfile.write(
+            self.wfile.write(bytes(
                 '<form action="/login" method="post"><table>'\
                 '<tr><td><input type="text" name="e" placeholder="email" /></td></tr>'\
                 '<tr><td><input type="password" name="p" placeholder="Password" /></td></tr>'\
                 '<tr><td><input type="submit" value="&quot;Login&quot;" /></td></tr>'\
-                '</table></form><br /><a href="./register">Register</a></body></html>')
+                '</table></form><br /><a href="./register">Register</a></body></html>',"utf-8"))
 # DATA API (JSON)
         elif re.search("\/api\?file\=[A-Za-z0-9]{4}$", self.path):
             self.send_response_header(200, {"Content-Type":"application/json"})
@@ -210,9 +210,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     }
                     self.wfile.write(json.dumps(js_data, sort_keys=True, indent=2))
                 except TypeError:
-                    self.wfile.write("{}")
+                    self.wfile.write(b"{}")
             else:
-                self.wfile.write("{}")
+                self.wfile.write(b"{}")
 # HISTORY (JSON)
         elif re.search("\/hist\?key\=[A-Z0-9]{32}$", self.path):
             self.send_response_header(200, {"Content-Type":"application/json"})
@@ -233,15 +233,15 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     item_count += 1
                 self.wfile.write(json.dumps(js_data, sort_keys=True, indent=2))
             except TypeError:
-                self.wfile.write("{}")
+                self.wfile.write(b"{}")
 # UPDATE
         elif self.path == "http://puush.me/dl/puush-win.zip" or self.path == "http://puush.me/dl/puush.zip":
-            update = urllib2.urlopen(self.path).read()
+            update = urllib.request.urlopen(self.path).read()
             self.wfile.write(update)
 # 404
         else:
             self.send_response_header(404, {"Content-Type":"text/plain"})
-            self.wfile.write("404")
+            self.wfile.write(b"404")
 
     def do_POST(self):
 # HISTORY
@@ -271,19 +271,19 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         db_data[2] == hash_pass(userinfo["password"])):
                     userinfo["key"] = db_data[3]
                     userinfo["usage"] = db_data[4]
-                    self.wfile.write("{0},{1},,{2}".format(
+                    self.wfile.write(b"{0},{1},,{2}".format(
                         abs(1-configuration.quota),
                         userinfo["key"],
                         userinfo["usage"]
                     ))
             except TypeError:
-                self.wfile.write("-1") # User is not in database
+                self.wfile.write(b"-1") # User is not in database
 # UPLOAD
         elif self.path == "http://puush.me/api/up" or self.path == "/up":
             return_url, file_num, file_usage = self.handle_upload()
             self.send_response_header(200, {"Content-Type":"text/plain"})
-            self.wfile.write("0,{0},{1},{2}".format(
-                return_url, file_num, file_usage))
+            self.wfile.write(bytes("0,{0},{1},{2}".format(
+                return_url, file_num, file_usage),"utf-8"))
 # DELETION
         elif self.path == "http://puush.me/api/del" or self.path == "/del":
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
@@ -321,7 +321,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 "Content-Type":"text/html",
                 "Content-Encoding":"gzip"
             })
-            self.wfile.write("\n")
+            self.wfile.write(b"\n")
 
 # REGISTRATION
         elif self.path == "/register":
@@ -339,7 +339,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             email_exists = True
                     if email_exists == True:
                         self.wfile.write(
-                            "That email has already been registered with. Please use a different email address.")
+                            b"That email has already been registered with. Please use a different email address.")
                     elif (re.search(".+@.+\..+", form["e"].value)
                          and len(form["p"].value) >= 5
                          and form["p"].value == form["q"].value
@@ -351,19 +351,19 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                 "pass":hash_pass(form["p"].value),
                                 "apikey":user_key})
                         db_connection.commit()
-                        self.wfile.write(
+                        self.wfile.write(bytes(
                             'Registered!<br />'\
                             'You may now log in with your email and password.<br />'\
-                            'Your user API key is {0}'.format(user_key))
+                            'Your user API key is {0}'.format(user_key),"utf-8"))
                     else:
-                        self.wfile.write(
+                        self.wfile.write(bytes(
                             "Please make sure that your email address is in the correct email address format and "\
-                            "that your password is more than 5 characters.")
+                            "that your password is more than 5 characters.","utf-8"))
                 except KeyError:
-                    self.wfile.write("At least put <i>something</i> in there.")
-                self.wfile.write("</body></html>")
+                    self.wfile.write(b"At least put <i>something</i> in there.")
+                self.wfile.write(b"</body></html>")
             else:
-                self.wfile.write("Registration has been disabled.</body></html>")
+                self.wfile.write(b"Registration has been disabled.</body></html>")
 # LOGIN
         elif self.path == "/login":
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
@@ -397,23 +397,23 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         db_connection.commit()
                         database.execute("UPDATE users SET apikey=:apikey where email=:email;",
                             {"apikey":gen_api_key(), "email":form["e"].value})
-                        self.wfile.write("Password changed!<br />")
+                        self.wfile.write(b"Password changed!<br />")
 
                     db_data = self.select_from_db("users", "email", form["e"].value)
-                    self.wfile.write("<table><tr><td>API Key: {0}</td></tr></table><br />".format(db_data[3]))
+                    self.wfile.write(bytes("<table><tr><td>API Key: {0}</td></tr></table><br />".format(db_data[3]),"utf-8"))
 
-                    self.wfile.write(
+                    self.wfile.write(bytes(
                         '<form name="delete" action="/login" method="POST">'\
                         '<table><thead><tr>'\
                         '<th class="n">Name</th><th class="v">Views</th>'\
                         '<th class="ts">Timestamp (Server Time)</th>'\
                         '<th class="s">Size (Bytes)</th><th class="t">Type</th><th class="d">Delete</th>'\
-                        '</tr></thead><tbody>')
+                        '</tr></thead><tbody>',"utf-8"))
 
                     database.execute("SELECT * FROM files WHERE owner=:owner;",
                         {"owner":form["e"].value})
                     for item in database:
-                        self.wfile.write(
+                        self.wfile.write(bytes(
                             '<tr>'\
                             '<td class="n"><a href="{0}">{1}</a></td>'\
                             '<td class="v">{2}</td><td class="ts">{3}</td>'\
@@ -421,30 +421,30 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             '<td class="t">{5}</td><td class="d">'\
                             '<input type="checkbox" name="d" value="{0}" />'\
                             '</td></tr>'.format(
-                                item[2], item[4], item[6], item[7], item[5], item[3]))
-                    self.wfile.write(
+                                item[2], item[4], item[6], item[7], item[5], item[3]),"utf-8"))
+                    self.wfile.write(bytes(
                         '<tr><td><input type="password" name="p" placeholder="Password" />'\
                         '<input type="hidden" name="e" value="{0}" />'\
                         '<input type="submit" value="Delete" />'\
                         '</td><td></td><td></td><td></td><td></td><td></td>'\
-                        '</tr></tbody></table></form><br />'.format(form["e"].value))
-                    self.wfile.write(
+                        '</tr></tbody></table></form><br />'.format(form["e"].value),"utf-8"))
+                    self.wfile.write(bytes(
                         '<form name="passchange" action="/login" method="POST">'\
                         '<input type="hidden" name="e" value="{0}" />'\
                         '<table><tr>'\
                         '<td><input type="password" name="p" placeholder="Current Password" /></td>'\
                         '<td><input type="password" name="q" placeholder="New Password" /></td>'\
                         '<td><input type="submit" value="Change" /></td>'\
-                        '</tr></table></form>'.format(form["e"].value))
-                    self.wfile.write("</body></html>")
+                        '</tr></table></form>'.format(form["e"].value),"utf-8"))
+                    self.wfile.write(b"</body></html>")
                 except KeyError:
                     # No email
-                    self.wfile.write("Bad Login: No email")
+                    self.wfile.write(b"Bad Login: No email")
                 except TypeError:
                     # Mismatch
-                    self.wfile.write("Bad Login: Invalid details")
+                    self.wfile.write(b"Bad Login: Invalid details")
             else:
-                self.wfile.write("Bad Login: No password")
+                self.wfile.write(b"Bad Login: No password")
                 
 
 # ADMINISTRATION
@@ -561,10 +561,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         '</body></html>')
                 else:
                     self.send_response_header(403, {"Content-Type":"text/plain"})
-                    self.wfile.write("Unauthorised")
+                    self.wfile.write(b"Unauthorised")
             else:
                 self.send_response_header(400, {"Content-Type":"text/plain"})
-                self.wfile.write("Bad Request")
+                self.wfile.write(b"Bad Request")
         elif self.path == "http://puush.me/api/thumb":
             form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={
                 "REQUEST_METHOD":"POST",
@@ -605,21 +605,21 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         database.execute("SELECT * FROM files WHERE url=:url;", {
                             "url":new_filename})
                         self.send_response_header(200, {"Content-Type":"text/html"})
-                        self.send_html_head("Web Upload")
-                        self.wfile.write(
+                        self.send_html_head(b"Web Upload")
+                        self.wfile.write(bytes(
                             '<a href="{0}{1}">{0}{1}</a></body></html>'.format(
-                                configuration.uploadURL, new_filename))
+                                configuration.uploadURL, new_filename),"utf-8"))
                     else:
                         self.send_response_header(507, {"Content-Type":"text/plain"})
-                        self.wfile.write("Quota exceeded.")
+                        self.wfile.write(b"Quota exceeded.")
                 else:
                     self.send_response_header(403, {"Content-Type":"text/html"})
-                    self.wfile.write("Incorrect password")
+                    self.wfile.write(b"Incorrect password")
             except KeyError:
                 pass
             except TypeError:
                 self.send_response_header(403, {"Content-Type":"text/html"})
-                self.wfile.write("Invalid email")
+                self.wfile.write(b"Invalid email")
 
     def handle_upload(self):
         """Receives data, authenticates, writes file to disk and database"""
@@ -662,10 +662,10 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     return configuration.uploadURL + new_filename, database.fetchone()[0], file_length
                 else:
                     return "Quota exceeded!", 0, 0
-        except KeyError, e:
+        except KeyError as e:
             print(e)
             return "Bad Request", 0, 0
-        except BaseException, e:
+        except BaseException as e:
             print(e)
             return "Something Bad Happened", 0, 0
 
@@ -685,7 +685,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         item[4], item[6])
                     upload_list.append(hist_item)
                     hist_items += 1
-            self.wfile.write("".join(upload_list))
+            self.wfile.write(bytes("".join(upload_list),"utf-8"))
     def admin_handle_delete(self, url):
         try:
             # Get file's size from item number
@@ -716,12 +716,12 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except OSError:
             pass
 
-class ThreadedHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
+class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     """Handle requests in a separate thread."""
 
 class Configuration(object):
     def __init__(self):
-        self.config = ConfigParser.RawConfigParser()
+        self.config = configparser.RawConfigParser()
         self.configFile = "server.cfg"
         self.checkConfig()
     
@@ -730,11 +730,11 @@ class Configuration(object):
             self.newConfig()
         try:
             self.loadConfig()
-        except ConfigParser.NoOptionError, e:
+        except configparser.NoOptionError as e:
             print("One or more options are missing/invalid:")
             print(e)
             sys.exit()
-        except ValueError, e:
+        except ValueError as e:
             print("One or more options are invalid:")
             print(e)
             sys.exit()
@@ -743,15 +743,15 @@ class Configuration(object):
         print("No config file present. Entering setup...")
         self.config.add_section("Server")
 
-        hostIP = raw_input("IP address or domain name (Default: external IP address): ")
+        hostIP = input("IP address or domain name (Default: external IP address): ")
         self.config.set("Server", "IP",
-            urllib2.urlopen("http://icanhazip.com/").read() if hostIP == "" else hostIP)
+            urllib.request.urlopen("http://icanhazip.com/").read() if hostIP == "" else hostIP)
 
-        hostPort = raw_input("Port (Default: random port): ")
+        hostPort = input("Port (Default: random port): ")
         self.config.set("Server", "Port",
             random.randint(1024, 65535) if hostPort == "" else hostPort)
 
-        databaseName = raw_input("Database Name (Default: PyFileServData.sqlite): ")
+        databaseName = input("Database Name (Default: PyFileServData.sqlite): ")
         self.config.set("Server", "DatabaseName",
             "PyFileServData.sqlite" if databaseName == "" else databaseName)
 
@@ -759,7 +759,7 @@ class Configuration(object):
         self.config.set("Server", "AdminPass",
             "12345" if adminPass == "" else adminPass)
 
-        quota = raw_input("Enable quota? (200MB) (Default: no) [yes/no]: ")
+        quota = input("Enable quota? (200MB) (Default: no) [yes/no]: ")
         self.config.set("Server", "Quota",
             "1" if quota == "yes" else "0")
 
@@ -768,9 +768,9 @@ class Configuration(object):
         self.config.set("Server", "PasswordSalt", gen_api_key() + gen_api_key())
         self.config.set("Server", "UploadDir", "Uploads/")
         self.config.set("Server", "ProgVer",
-            urllib2.urlopen("http://puush.me/dl/puush-win.txt?check=true").read())
+            urllib.request.urlopen("http://puush.me/dl/puush-win.txt?check=true").read())
         self.config.set("Server", "AutoUpdate", "1")
-        with open(self.configFile, "wb") as cf:
+        with open(self.configFile, "w") as cf:
             self.config.write(cf)
         print("Configuration file saved as {0}.".format(self.configFile))
     
@@ -790,7 +790,7 @@ class Configuration(object):
         self.autoUpdate = self.config.getboolean("Server", "AutoUpdate")
     
     def saveConfig(self):
-        with open(self.configFile, "wb") as configfile:
+        with open(self.configFile, "w") as configfile:
             self.config.write(configfile)
             
 if __name__ == "__main__":
@@ -799,7 +799,7 @@ if __name__ == "__main__":
 
     if configuration.uploadDir[:-1] not in os.listdir("."):
         print("Creating upload directory...")
-        os.mkdir(configuration.uploadDir, 0744)
+        os.mkdir(configuration.uploadDir, 0o0744)
 
     if not configuration.databaseName:
         print("No database name found. Please add a value to DatabaseName in {0}.".format(CONFIG_FILE))
