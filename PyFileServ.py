@@ -745,7 +745,7 @@ class Configuration(object):
 
         hostIP = input("IP address or domain name (Default: external IP address): ")
         self.config.set("Server", "IP",
-            urllib.request.urlopen("http://icanhazip.com/").read() if hostIP == "" else hostIP)
+            urllib.request.urlopen("http://icanhazip.com/").read().decode("utf-8")[:-1] if hostIP == "" else hostIP)
 
         hostPort = input("Port (Default: random port): ")
         self.config.set("Server", "Port",
