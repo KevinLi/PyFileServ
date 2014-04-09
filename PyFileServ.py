@@ -77,7 +77,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header(header, headers[header])
         self.end_headers()
     def send_html_head(self, title):
-        self.wfile.write(bytes
+        self.wfile.write(bytes(
             '<!doctype html><html><head>'\
             '<meta charset=utf-8 /><title>{0}</title>'\
             '<link rel="stylesheet" type="text/css" href="style.css" />'\
