@@ -484,16 +484,16 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                     elif "l" in form.keys():
                         configuration.loadConfig()
                     self.send_html_head("Administration")
-                    self.wfile.write(
+                    self.wfile.write(bytes(
                         '<form name="delete" action="/admin" method="POST">'\
                         '<table><thead><tr>'\
                         '<th class="n">Name</th><th class="v">Views</th>'\
                         '<th class="ts">Timestamp (Server Time)</th><th class="o">Owner</th>'\
                         '<th class="s">Size (Bytes)</th><th class="t">Type</th><th class="d">Delete</th>'\
-                        '</tr></thead><tbody>')
+                        '</tr></thead><tbody>',"utf-8"))
                     database.execute("SELECT * FROM files;")
                     for item in database:
-                        self.wfile.write(
+                        self.wfile.write(bytes(
                             '<tr>'\
                             '<td class="n"><a href="{0}">{1}</a></td>'\
                             '<td class="v">{2}</td><td class="ts">{3}</td>'\
@@ -502,24 +502,24 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                             '<input type="hidden" name="o" value="{4}" />'\
                             '<input type="checkbox" name="d" value="{0}" />'\
                             '</td></tr>'.format(
-                                item[2], item[4], item[6], item[7], item[1], item[5], item[3]))
-                    self.wfile.write(
+                                item[2], item[4], item[6], item[7], item[1], item[5], item[3]),"utf-8"))
+                    self.wfile.write(bytes(
                         '<tr><td><input type="password" name="p" placeholder="Password" />'\
                         '<input type="submit" value="Delete" />'\
                         '</td><td></td><td></td><td></td><td></td><td></td><td></td>'\
-                        '</tr></tbody></table></form><br /><table><tr><td>')
+                        '</tr></tbody></table></form><br /><table><tr><td>',"utf-8"))
 
                     quota_setting = ["On", "0", "Disable"] if configuration.quota == 1 else ["Off", "1", "Enable"]
-                    self.wfile.write(
+                    self.wfile.write(bytes(
                         '<form name="quota" action="/admin" method="POST">'\
                         'Quota: <div class="statGrey">{0}</div>'\
                         '<input type="hidden" name="q" value="{1}" />'\
                         '<input type="password" name="p" placeholder="Password" />'\
                         '<input type="submit" value="{2}" /></form>'.format(
-                            quota_setting[0], quota_setting[1], quota_setting[2]))
+                            quota_setting[0], quota_setting[1], quota_setting[2]),"utf-8"))
 
                     registration_setting = ["Off", "1", "Enable", "statGrey"] if configuration.enableRegistration == False else ["On", "0", "Disable", "statRed"]
-                    self.wfile.write(
+                    self.wfile.write(bytes(
                         '<form name="registration" action="/admin" method="POST">'\
                         'Registration: <div class="{3}">{0}</div>'\
                         '<input type="hidden" name="r" value="{1}" />'\
@@ -528,9 +528,9 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                             registration_setting[0],
                             registration_setting[1],
                             registration_setting[2],
-                            registration_setting[3]))
+                            registration_setting[3]),"utf-8"))
                     api_setting = ["Off", "1", "Enable", "statGrey"] if configuration.enableAPI == False else ["On", "0", "Disable", "statGrey"]
-                    self.wfile.write(
+                    self.wfile.write(bytes(
                         '<form name="api" action="/admin" method="POST">'\
                         'Web API: <div class="{3}">{0}</div>'\
                         '<input type="hidden" name="a" value="{1}" />'\
@@ -539,26 +539,26 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                             api_setting[0],
                             api_setting[1],
                             api_setting[2],
-                            api_setting[3]))
-                    self.wfile.write(
+                            api_setting[3]),"utf-8"))
+                    self.wfile.write(bytes(
                         '</td><td><form name="changepass" action="/admin" method="POST">'\
                         '<table>'\
                         '<tr><td>Change Administrator Password:</td></tr>'\
                         '<tr><td><input type="password" name="p" placeholder="Current Password" /></td></tr>'\
                         '<tr><td><input type="password" name="n" placeholder="New Password" /></td></tr>'\
                         '<tr><td><input type="submit" value="Change" /></td></tr>'\
-                        '</table></form><br />')
-                    self.wfile.write(
+                        '</table></form><br />',"utf-8"))
+                    self.wfile.write(bytes(
                         '<form name="reload" action="/admin" method="POST">'\
                         '<table>'\
                         '<tr><td>Reload Config from file:</td></tr>'\
                         '<tr><td><input type="password" name="p" placeholder="Password" /></td></tr>'\
                         '<tr><td><input type="submit" name="l" value="Reload Config" /></td></tr>'\
                         '</table></form></td></tr></table>'
-                        )
-                    self.wfile.write(
+                        ,"utf-8"))
+                    self.wfile.write(bytes(
                         # '<footer><a href="nope">testfooter</a></footer>'\
-                        '</body></html>')
+                        '</body></html>',"utf-8"))
                 else:
                     self.send_response_header(403, {"Content-Type":"text/plain"})
                     self.wfile.write(b"Unauthorised")
